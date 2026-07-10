@@ -22,8 +22,8 @@ export default function UserData() {
         const fetchData = async () => {
             try {
                 const [userRes, orderRes] = await Promise.all([
-                    fetch('http://localhost:8000/api/users/all'),
-                    fetch('http://localhost:8000/api/orders/all')
+                    fetch('https://zomato-production-1f03.up.railway.app/api/users/all'),
+                    fetch('https://zomato-production-1f03.up.railway.app/api/orders/all')
                 ]);
                 
                 const users = await userRes.json();

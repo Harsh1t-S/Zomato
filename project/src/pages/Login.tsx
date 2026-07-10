@@ -18,7 +18,7 @@ export default function Login() {
     setError('');
 
     try {
-      const resp = await fetch('http://localhost:8000/api/users/login', {
+      const resp = await fetch('https://zomato-production-1f03.up.railway.app/api/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ number, password })

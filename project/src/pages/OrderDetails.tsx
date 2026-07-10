@@ -12,7 +12,7 @@ export default function OrderDetails() {
   useEffect(() => {
     const fetchOrderDetails = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/orders/${id}`, {
+        const response = await fetch(`https://zomato-production-1f03.up.railway.app/api/orders/${id}`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',

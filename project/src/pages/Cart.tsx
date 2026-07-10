@@ -37,7 +37,7 @@ export default function Cart() {
     const newOrderId = Date.now().toString().slice(-6);
     
     try {
-      const response = await fetch('http://localhost:8000/api/orders', {
+      const response = await fetch('https://zomato-production-1f03.up.railway.app/api/orders', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
