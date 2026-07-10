@@ -1,0 +1,64 @@
+/*
+  Disable unknown at-rule warnings for tools like stylelint/language servers.
+  This file uses TailwindCSS directives and @apply which are processed by
+  PostCSS/Tailwind at build time.
+*/
+/* stylelint-disable at-rule-no-unknown */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    @apply transition-colors duration-300;
+  }
+  
+  html.dark body {
+    @apply bg-gray-900 text-white;
+  }
+  html.dark .bg-white {
+    @apply bg-gray-800 border-gray-700 !important;
+  }
+  html.dark .bg-gray-50, 
+  html.dark .bg-gray-100 {
+    @apply bg-gray-900 border-gray-700 !important;
+  }
+  html.dark .text-gray-900, 
+  html.dark .text-gray-800 {
+    @apply text-white !important;
+  }
+  html.dark .text-gray-700, 
+  html.dark .text-gray-600 {
+    @apply text-gray-200 !important;
+  }
+  html.dark .text-gray-500, 
+  html.dark .text-gray-400 {
+    @apply text-gray-300 !important;
+  }
+  html.dark .border-gray-100, 
+  html.dark .border-gray-200, 
+  html.dark .border-gray-300 {
+    @apply border-gray-700 !important;
+  }
+  html.dark .bg-red-50 {
+    @apply bg-red-900/30 !important;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+}
