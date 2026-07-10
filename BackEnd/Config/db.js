@@ -1,6 +1,6 @@
 const { Sequelize } = require('sequelize');
 
-const db = new Sequelize('Zomato', 'root', '12345', {
+const db = new Sequelize('Zomato', 'root', 'DGQmoGkQwmtRrwquDtKHWWJRzOYIFvjX', {
 
     host: 'localhost',
     dialect: 'mysql',
