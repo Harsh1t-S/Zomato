@@ -33,7 +33,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Initialize state from localStorage so logins survive page refreshes
   const [user, setUser] = useState<AuthUser | null>(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      // Corrupted/old-format data — don't crash the whole app on load.
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
   });
 
   const isLoggedIn = !!user;

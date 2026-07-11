@@ -1,9 +1,10 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { CartProvider } from './context/CartContext';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import Layout from './components/Layout';
+import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import SearchPage from './pages/SearchPage';
 import RestaurantDetail from './pages/RestaurantDetail';
@@ -29,6 +30,7 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <CartProvider>
+            <ScrollToTop />
             <Routes>
               <Route element={<Layout />}>
                 <Route path="/" element={<Home />} />
@@ -66,6 +68,7 @@ export default function App() {
                   <VendorLayout />
                 </ProtectRoutes>
               }>
+                <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<VendorDashboard />} />
                 <Route path="menu" element={<VendorMenu />} />
                 <Route path="orders" element={<VendorOrders />} />

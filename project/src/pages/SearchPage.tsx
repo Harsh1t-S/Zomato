@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { SlidersHorizontal, Leaf, X, Search } from 'lucide-react';
 import RestaurantCard from '../components/RestaurantCard';
 import { apiJson } from '../lib/api';
+import { toArray } from '../lib/utils';
 
 export default function SearchPage() {
   const [searchParams] = useSearchParams();
@@ -24,6 +25,13 @@ export default function SearchPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Keep the search box (and results) in sync when the user searches again
+  // from the header while already on this page — the URL's `q` param changes
+  // but this component doesn't remount, so it needs to be picked up here.
+  useEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+
   const activeQuery = searchInput || query;
 
   const filtered = useMemo(() => {
@@ -32,8 +40,8 @@ export default function SearchPage() {
     if (activeQuery) {
       const q = activeQuery.toLowerCase();
       result = result.filter((r) => {
-        const cuisine: string[] = Array.isArray(r.cuisine) ? r.cuisine : JSON.parse(r.cuisine || '[]');
-        const dishes: string[] = Array.isArray(r.popularDishes) ? r.popularDishes : JSON.parse(r.popularDishes || '[]');
+        const cuisine: string[] = toArray(r.cuisine);
+        const dishes: string[] = toArray(r.popularDishes);
         return (
           r.name.toLowerCase().includes(q) ||
           cuisine.some((c) => c.toLowerCase().includes(q)) ||

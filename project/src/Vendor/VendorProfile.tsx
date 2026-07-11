@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiJson } from '../lib/api';
+import { toArray } from '../lib/utils';
 import { Store, Phone, FileText, Building2, MapPin, Clock, IndianRupee, Pencil, Check, X, AlertTriangle } from 'lucide-react';
 
 interface RestaurantData {
@@ -39,8 +40,9 @@ export default function VendorProfile() {
     if (!user?.restaurantId) return;
     apiJson<RestaurantData>(`/api/restraunt/${user.restaurantId}`)
       .then((data) => {
-        setRestaurant(data);
-        setForm({ ...data, cuisineText: (data.cuisine || []).join(', ') });
+        const cuisineArr = toArray(data.cuisine);
+        setRestaurant({ ...data, cuisine: cuisineArr });
+        setForm({ ...data, cuisine: cuisineArr, cuisineText: cuisineArr.join(', ') });
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));

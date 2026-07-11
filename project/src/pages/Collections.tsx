@@ -1,9 +1,21 @@
 import { Link } from 'react-router-dom';
-import { collections, restaurants } from '../data/restaurants';
+import { useEffect, useState } from 'react';
+import { collections } from '../data/restaurants';
 import RestaurantCard from '../components/RestaurantCard';
 import { ChevronRight } from 'lucide-react';
+import { apiJson } from '../lib/api';
 
 export default function Collections() {
+  const [restaurants, setRestaurants] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiJson<any[]>('/api/restraunt/all')
+      .then((data) => setRestaurants(Array.isArray(data) ? data : []))
+      .catch((err) => console.error(err))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div>
       {/* Hero */}
@@ -53,12 +65,28 @@ export default function Collections() {
 
       {/* All restaurants */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">All Restaurants</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {restaurants.map((r) => (
-            <RestaurantCard key={r.id} restaurant={r} />
-          ))}
-        </div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">All Restaurants</h2>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-700">
+                <div className="h-52 bg-gray-200 dark:bg-gray-800 animate-pulse" />
+                <div className="p-4 space-y-3">
+                  <div className="h-5 w-3/4 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+                  <div className="h-4 w-1/2 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : restaurants.length === 0 ? (
+          <p className="text-gray-500 dark:text-gray-400 py-8">No restaurants available yet. Check back soon!</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {restaurants.map((r) => (
+              <RestaurantCard key={r.id} restaurant={r} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
