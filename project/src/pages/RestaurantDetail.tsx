@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import { apiJson } from '../lib/api';
+import { toArray } from '../lib/utils';
 import RatingBadge from '../components/RatingBadge';
 
 export default function RestaurantDetail() {
@@ -75,9 +76,7 @@ export default function RestaurantDetail() {
     return <div className="min-h-screen flex items-center justify-center text-2xl font-bold dark:bg-gray-900 dark:text-white">Restaurant not found</div>;
   }
 
-  const cuisines = Array.isArray(restaurant.cuisine)
-    ? restaurant.cuisine
-    : JSON.parse(restaurant.cuisine || '[]');
+  const cuisines = toArray(restaurant.cuisine);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 dark:bg-gray-900">

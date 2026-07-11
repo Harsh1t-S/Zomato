@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Star, Clock, MapPin, IndianRupee } from 'lucide-react';
 import type { Restaurant } from '../data/restaurants';
+import { toArray } from '../lib/utils';
 
 function ratingColor(rating: number) {
   if (rating >= 4.0) return '#267E3E';
@@ -9,9 +10,7 @@ function ratingColor(rating: number) {
 }
 
 export default function RestaurantCard({ restaurant }: { restaurant: Partial<Restaurant> & { id: string; name: string } }) {
-  const cuisine: string[] = Array.isArray(restaurant.cuisine)
-    ? restaurant.cuisine
-    : JSON.parse((restaurant.cuisine as unknown as string) || '[]');
+  const cuisine: string[] = toArray(restaurant.cuisine);
 
   return (
     <Link
@@ -85,4 +84,3 @@ export default function RestaurantCard({ restaurant }: { restaurant: Partial<Res
     </Link>
   );
 }
-
