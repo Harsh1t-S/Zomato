@@ -1,14 +1,29 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Store, User, Building2, FileText } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export default function Signup() {
-  const [name, setName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
+  // Shared State
+  const [number, setNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isVendor, setIsVendor] = useState(false);
+  
+  // Customer State
+  const [name, setName] = useState('');
+
+  // Vendor State
+  const [ownerName, setOwnerName] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
+
+  // UI State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
   const navigate = useNavigate();
+  const { login } = useAuth() as any;
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,19 +31,36 @@ export default function Signup() {
     setError('');
 
     try {
-      const response = await fetch('https://zomato-production-1f03.up.railway.app/api/users', {
+      const endpoint = isVendor 
+        ? 'https://zomato-production-1f03.up.railway.app/api/vendors/register' // Or http://localhost:8000 for local dev
+        : 'https://zomato-production-1f03.up.railway.app/api/users';
+
+      const payload = isVendor 
+        ? { ownerName, number, password, businessName, gstNumber }
+        : { name, number, password };
+
+      const resp = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, number: phoneNumber, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to create account. Please try again.');
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(data.error || 'Failed to register account');
       }
 
-      navigate('/login');
+      // Automatically log them in after successful registration
+      login(isVendor ? { ...data, role: 'vendor' } : data);
+      
+      // Route them based on their account type
+      if (isVendor) {
+        navigate('/vendor/dashboard');
+      } else {
+        navigate('/');
+      }
+
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -37,124 +69,100 @@ export default function Signup() {
   };
 
   return (
-    <div className="min-h-[90vh] bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4 transition-colors duration-300">
+    <div className="min-h-[90vh] bg-gray-50 dark:bg-gray-900 flex items-center justify-center py-12 px-4 transition-colors duration-300">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-5xl font-extrabold text-zomato-red mb-2 tracking-tight">zomato</h1>
-          <p className="text-gray-600 dark:text-gray-400">Discover the best food & drinks</p>
+          <p className="text-gray-600 dark:text-gray-400">
+            {isVendor ? 'Partner with us and grow your business' : 'Create an account to continue'}
+          </p>
         </div>
 
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Create Account</h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">Join us to explore amazing food</p>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
+          
+          {/* Account Type Toggle */}
+          <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-xl mb-6">
+            <button
+              type="button"
+              onClick={() => { setIsVendor(false); setError(''); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${
+                !isVendor ? 'bg-white dark:bg-gray-800 text-zomato-red shadow-sm' : 'text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              <User className="w-4 h-4" /> Customer
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsVendor(true); setError(''); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${
+                isVendor ? 'bg-white dark:bg-gray-800 text-zomato-red shadow-sm' : 'text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              <Store className="w-4 h-4" /> Restaurant Partner
+            </button>
+          </div>
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg mb-6 text-sm">
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-6 text-sm font-medium">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSignup} className="space-y-5">
+            {/* Conditional Fields based on Account Type */}
+            {!isVendor ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Full Name</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="John Doe" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Owner Name</label>
+                    <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="John Doe" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                       <FileText className="w-4 h-4 text-gray-400" /> GST Number
+                    </label>
+                    <input type="text" value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="22AAAAA0000A1Z5" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                    <Building2 className="w-4 h-4 text-gray-400" /> Business / Restaurant Name
+                  </label>
+                  <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. Harshit's Pizza" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
+                </div>
+              </>
+            )}
+
+            {/* Shared Fields */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Full Name
-              </label>
-              <input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter your full name"
-                className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red dark:focus:border-zomato-red focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900/30 transition placeholder-gray-400 dark:placeholder-gray-500"
-                required
-              />
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Phone Number</label>
+              <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="10-digit mobile number" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
             </div>
 
             <div>
-              <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Phone Number
-              </label>
-              <input
-                id="phoneNumber"
-                type="tel"
-                inputMode="numeric"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                placeholder="Enter your phone number"
-                className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red dark:focus:border-zomato-red focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900/30 transition placeholder-gray-400 dark:placeholder-gray-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Password
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Password</label>
               <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Create a password"
-                  className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red dark:focus:border-zomato-red focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900/30 transition placeholder-gray-400 dark:placeholder-gray-500"
-                  required
-                  minLength={6}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-3.5 text-gray-400 hover:text-zomato-red text-sm font-medium transition-colors"
-                >
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 6 characters" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required minLength={6} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-gray-400 hover:text-zomato-red text-sm font-medium">
                   {showPassword ? 'Hide' : 'Show'}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center text-sm">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" className="mt-0.5 w-4 h-4 rounded border-gray-300 text-zomato-red focus:ring-zomato-red accent-zomato-red" required />
-                <span className="text-gray-600 dark:text-gray-400 leading-tight">
-                  I agree to Zomato's <a href="#" className="text-zomato-red hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">Terms of Service</a>, <a href="#" className="text-zomato-red hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">Privacy Policy</a> and <a href="#" className="text-zomato-red hover:text-red-700 dark:hover:text-red-400 font-medium transition-colors">Content Policies</a>
-                </span>
-              </label>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-zomato-red text-white font-bold py-3.5 rounded-xl hover:bg-red-600 transition-colors duration-300 disabled:opacity-75 disabled:cursor-not-allowed flex items-center justify-center text-lg"
-            >
-              {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5 mr-3" viewBox="0 0 24 24">
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      fill="none"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  Creating Account...
-                </>
-              ) : (
-                'Create Account'
-              )}
+            <button type="submit" disabled={loading} className="w-full bg-zomato-red text-white font-bold py-3.5 rounded-xl hover:bg-red-600 transition-colors disabled:opacity-75 flex items-center justify-center">
+              {loading ? 'Creating Account...' : 'Create Account'}
             </button>
           </form>
 
           <p className="mt-8 text-center text-gray-600 dark:text-gray-400">
             Already have an account?{' '}
-            <Link to="/login" className="text-zomato-red hover:text-red-700 dark:hover:text-red-400 font-bold transition-colors">
-              Sign in here
+            <Link to="/login" className="text-zomato-red hover:text-red-700 font-bold">
+              Log in here
             </Link>
           </p>
         </div>
