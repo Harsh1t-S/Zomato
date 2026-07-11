@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Utensils, PlusCircle, Image as ImageIcon, FileText, IndianRupee, Store, Tag, CheckCircle, Moon, Sun } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { apiJson } from '../lib/api';
 
 export default function AddFood() {
   const [restaurants, setRestaurants] = useState<any[]>([]);
@@ -15,16 +16,14 @@ export default function AddFood() {
     description: '',
     price: '',
     category: '',
-    imageUrl: ''
+    imageUrl: '',
+    veg: false
   });
 
   useEffect(() => {
-    fetch('https://zomato-production-1f03.up.railway.app/api/restraunt/all')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setRestaurants(data);
-      })
-      .catch(err => console.error(err));
+    apiJson<any[]>('/api/restraunt/all')
+      .then((data) => { if (Array.isArray(data)) setRestaurants(data); })
+      .catch((err) => console.error(err));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -40,13 +39,7 @@ export default function AddFood() {
         restrauntId: parseInt(formData.restrauntId)
       };
 
-      const response = await fetch('https://zomato-production-1f03.up.railway.app/api/food', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) throw new Error('Failed to add food item');
+      await apiJson('/api/food', { method: 'POST', body: JSON.stringify(payload) });
 
       setSuccess(true);
       setFormData({
@@ -55,9 +48,10 @@ export default function AddFood() {
         description: '',
         price: '',
         category: '',
-        imageUrl: ''
+        imageUrl: '',
+        veg: false
       });
-      
+
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       setError(err.message);
@@ -137,7 +131,7 @@ export default function AddFood() {
                   className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
                 />
               </div>
-              
+
               <div>
                 <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
                   <IndianRupee className="w-4 h-4 text-gray-400" />
@@ -201,6 +195,11 @@ export default function AddFood() {
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 resize-none"
               />
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-900 dark:text-gray-200">
+              <input type="checkbox" checked={formData.veg} onChange={e => setFormData({...formData, veg: e.target.checked})} className="w-4 h-4 accent-green-600" />
+              This is a vegetarian dish
+            </label>
 
             <button
               type="submit"

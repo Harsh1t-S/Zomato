@@ -2,6 +2,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import { User, Heart, MapPin, CreditCard, Bell, HelpCircle, LogOut, ChevronRight, Package, Gift } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { apiJson } from '../lib/api';
+
+const STATUS_BADGE_STYLES: Record<string, string> = {
+  placed: 'bg-blue-100 text-blue-800',
+  preparing: 'bg-yellow-100 text-yellow-800',
+  ready: 'bg-purple-100 text-purple-800',
+  out_for_delivery: 'bg-indigo-100 text-indigo-800',
+  delivered: 'bg-green-100 text-green-700',
+  cancelled: 'bg-gray-200 text-gray-700',
+};
 
 export default function Account() {
   const [activeTab, setActiveTab] = useState('orders');
@@ -12,12 +22,9 @@ export default function Account() {
   useEffect(() => {
     const fetchOrders = async () => {
       try {
-        const response = await fetch('https://zomato-production-1f03.up.railway.app/api/orders/all');
-        const data = await response.json();
-        
+        const data = await apiJson<any[]>('/api/orders/mine');
         if (Array.isArray(data)) {
-          const userOrders = data.filter((o: any) => o.number === user?.number);
-          setOrders(userOrders.reverse());
+          setOrders(data.reverse());
         }
       } catch (error) {
         console.error('Failed to fetch orders:', error);
@@ -129,7 +136,10 @@ export default function Account() {
                     No recent orders found.
                   </div>
                 ) : (
-                  orders.map((order) => (
+                  orders.map((order) => {
+                    const status = order.status || 'placed';
+                    const badgeStyle = STATUS_BADGE_STYLES[status] || STATUS_BADGE_STYLES.placed;
+                    return (
                     <div key={order.Orderid} className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-md transition-shadow">
                       <div className="flex items-start justify-between mb-3">
                         <div>
@@ -145,8 +155,8 @@ export default function Account() {
                             </p>
                           )}
                         </div>
-                        <span className="bg-green-100 text-green-700 text-xs font-medium px-3 py-1 rounded-full shrink-0">
-                          Delivered
+                        <span className={`capitalize text-xs font-medium px-3 py-1 rounded-full shrink-0 ${badgeStyle}`}>
+                          {status.replace(/_/g, ' ')}
                         </span>
                       </div>
                       <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100">
@@ -156,7 +166,8 @@ export default function Account() {
                         </Link>
                       </div>
                     </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

@@ -30,6 +30,11 @@ const Orders = db.define('orders', {
     ItemPrices: {
         type: DataTypes.JSON,
         allowNull: false
+    },
+    status: {
+        type: DataTypes.ENUM('placed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'),
+        allowNull: false,
+        defaultValue: 'placed'
     }
 }, {
     timestamps: true,

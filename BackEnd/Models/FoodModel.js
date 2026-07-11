@@ -26,6 +26,11 @@ const Food = db.define('Food', {
         type: DataTypes.STRING,
         allowNull: true,
     },
+    veg: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+    },
 
 });
 

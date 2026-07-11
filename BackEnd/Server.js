@@ -1,4 +1,5 @@
-const cors = require('cors');   
+require('dotenv').config();
+const cors = require('cors');
 const express = require('express');
 const db = require('./Config/db');
 
@@ -7,11 +8,10 @@ const OrderRoutes = require('./Routes/OrderRoutes');
 const RestrauntRoutes = require('./Routes/RestrauntRoutes');
 const FoodRoutes = require('./Routes/FoodRoutes');
 const VendorRoutes = require('./Routes/VendorRoutes');
-
-const VendorModel = require('./Models/VendorModel');
+const AdminRoutes = require('./Routes/AdminRoutes');
 
 const app = express();
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 
 app.use(cors());
 app.use(express.json());
@@ -21,6 +21,7 @@ app.use('/api/orders/', OrderRoutes);
 app.use('/api/restraunt/', RestrauntRoutes);
 app.use('/api/food', FoodRoutes);
 app.use('/api/vendors', VendorRoutes);
+app.use('/api/admin', AdminRoutes);
 
 app.get('/', (req, res) => {
     res.send('Server is running and database is connected.');

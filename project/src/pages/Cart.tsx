@@ -3,10 +3,13 @@ import { useState } from 'react';
 import { Plus, Minus, Trash2, ShoppingBag, ArrowLeft, IndianRupee, MapPin, Tag, Check, Copy } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { apiJson } from '../lib/api';
 
 export default function Cart() {
   const { items, updateQuantity, removeItem, clearCart, totalPrice, totalItems } = useCart();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   
   const [promoCode, setPromoCode] = useState('');
@@ -35,30 +38,26 @@ export default function Cart() {
 
     setIsPlacing(true);
     const newOrderId = Date.now().toString().slice(-6);
-    
+
     try {
-      const response = await fetch('https://zomato-production-1f03.up.railway.app/api/orders', {
+      await apiJson('/api/orders', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           Orderid: newOrderId,
           number: user.number,
           totalAmount: grandTotal,
           restrauntName: items[0]?.restaurantName || 'Zomato Restaurant',
+          restrauntId: items[0]?.restaurantId,
           orderedItems: items.map(ci => ({ name: ci.item.name, quantity: ci.quantity })),
           ItemPrices: items.map(ci => ({ name: ci.item.name, price: ci.item.price * ci.quantity }))
         }),
       });
 
-      if (response.ok) {
-        setFinalOrder({ id: newOrderId, total: grandTotal, items: totalItems });
-        setOrderPlaced(true);
-        clearCart();
-      }
-    } catch (error) {
-      console.error(error);
+      setFinalOrder({ id: newOrderId, total: grandTotal, items: totalItems });
+      setOrderPlaced(true);
+      clearCart();
+    } catch (error: any) {
+      showToast(error.message || 'Failed to place order. Please try again.', 'error');
     } finally {
       setIsPlacing(false);
     }

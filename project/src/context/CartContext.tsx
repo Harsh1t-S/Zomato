@@ -8,9 +8,14 @@ export interface CartItem {
   restaurantName: string;
 }
 
+type AddResult = 'added' | 'different_restaurant';
+
 interface CartContextType {
   items: CartItem[];
-  addItem: (item: MenuItem, restaurantId: string, restaurantName: string) => void;
+  // Returns 'different_restaurant' instead of adding if the cart already has
+  // items from a different restaurant. Pass force=true (after confirming
+  // with the user) to clear the cart and add anyway.
+  addItem: (item: MenuItem, restaurantId: string, restaurantName: string, force?: boolean) => AddResult;
   removeItem: (itemId: string) => void;
   updateQuantity: (itemId: string, delta: number) => void;
   clearCart: () => void;
@@ -24,16 +29,25 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addItem = (item: MenuItem, restaurantId: string, restaurantName: string) => {
+  const addItem = (item: MenuItem, restaurantId: string, restaurantName: string, force = false): AddResult => {
+    const currentRestaurantId = items.length > 0 ? items[0].restaurantId : null;
+
+    if (currentRestaurantId && currentRestaurantId !== restaurantId && !force) {
+      return 'different_restaurant';
+    }
+
     setItems((prev) => {
-      const existing = prev.find((ci) => ci.item.id === item.id);
+      const base = force && currentRestaurantId && currentRestaurantId !== restaurantId ? [] : prev;
+      const existing = base.find((ci) => ci.item.id === item.id);
       if (existing) {
-        return prev.map((ci) =>
+        return base.map((ci) =>
           ci.item.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci
         );
       }
-      return [...prev, { item, quantity: 1, restaurantId, restaurantName }];
+      return [...base, { item, quantity: 1, restaurantId, restaurantName }];
     });
+
+    return 'added';
   };
 
   const removeItem = (itemId: string) => {

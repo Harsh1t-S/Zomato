@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Store, User, Building2, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { apiJson } from '../lib/api';
 
 export default function Signup() {
   const [number, setNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isVendor, setIsVendor] = useState(false);
-  
+
   const [name, setName] = useState('');
 
   const [ownerName, setOwnerName] = useState('');
@@ -17,9 +18,9 @@ export default function Signup() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const navigate = useNavigate();
-  const { login } = useAuth() as any;
+  const { login } = useAuth();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,37 +28,25 @@ export default function Signup() {
     setError('');
 
     try {
-      const endpoint = isVendor 
-        ? 'https://zomato-production-1f03.up.railway.app/api/vendors/register'
-        : 'https://zomato-production-1f03.up.railway.app/api/users';
-
-      const payload = isVendor 
+      const endpoint = isVendor ? '/api/vendors/register' : '/api/users';
+      const payload = isVendor
         ? { ownerName, number, password, businessName, gstNumber }
         : { name, number, password };
 
-      const resp = await fetch(endpoint, {
+      const data = await apiJson(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
-      const data = await resp.json();
+      login({ ...data, name: isVendor ? data.ownerName : data.name });
 
-      if (!resp.ok) {
-        throw new Error(data.error || 'Failed to register account');
-      }
-
-      const vendorData = isVendor ? { ...data, role: 'vendor', name: data.ownerName } : data;
-      login(vendorData);
-      
       if (isVendor) {
-        navigate('/vendor/dashboard');
+        navigate('/vendor/setup');
       } else {
         navigate('/');
       }
-
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Failed to register account');
     } finally {
       setLoading(false);
     }
@@ -74,7 +63,7 @@ export default function Signup() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
-          
+
           <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-xl mb-6">
             <button
               type="button"
@@ -99,6 +88,12 @@ export default function Signup() {
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-6 text-sm font-medium">
               {error}
+            </div>
+          )}
+
+          {isVendor && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900 text-blue-700 dark:text-blue-300 px-4 py-3 rounded-lg mb-6 text-xs leading-relaxed">
+              After signing up, you'll set up your restaurant profile. Your account needs admin approval before it goes live to customers.
             </div>
           )}
 

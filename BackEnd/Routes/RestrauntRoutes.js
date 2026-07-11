@@ -1,8 +1,9 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth, requireRole, optionalAuth } = require('../Middleware/auth');
 
-const { 
-    addRestraunt, 
+const {
+    addRestraunt,
     getAllRestaurants,
     getRestaurantById,
     updateRestaurant,
@@ -10,11 +11,12 @@ const {
     getRestaurantByVendor
 } = require('../Controllers/RestrauntController');
 
-router.post('/add', addRestraunt);
-router.get('/all', getAllRestaurants);
-router.get('/vendor/:vendorId', getRestaurantByVendor);
+router.get('/all', optionalAuth, getAllRestaurants);
+router.get('/vendor/:vendorId', requireAuth, requireRole('vendor', 'admin'), getRestaurantByVendor);
 router.get('/:id', getRestaurantById);
-router.put('/update/:id', updateRestaurant);
-router.delete('/delete/:id', deleteRestaurant);
+
+router.post('/add', requireAuth, requireRole('vendor', 'admin'), addRestraunt);
+router.put('/update/:id', requireAuth, requireRole('vendor', 'admin'), updateRestaurant);
+router.delete('/delete/:id', requireAuth, requireRole('vendor', 'admin'), deleteRestaurant);
 
 module.exports = router;
