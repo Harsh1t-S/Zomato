@@ -5,12 +5,12 @@ import { useAuth } from '../context/AuthContext';
 import { apiJson } from '../lib/api';
 
 const STATUS_BADGE_STYLES: Record<string, string> = {
-  placed: 'bg-blue-100 text-blue-800',
-  preparing: 'bg-yellow-100 text-yellow-800',
-  ready: 'bg-purple-100 text-purple-800',
-  out_for_delivery: 'bg-indigo-100 text-indigo-800',
-  delivered: 'bg-green-100 text-green-700',
-  cancelled: 'bg-gray-200 text-gray-700',
+  placed: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  preparing: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+  ready: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400',
+  out_for_delivery: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
+  delivered: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  cancelled: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
 };
 
 export default function Account() {
@@ -91,30 +91,30 @@ export default function Account() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="md:col-span-1">
-          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl overflow-hidden">
             {menuItems.map((item, idx) => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-4 p-4 text-left hover:bg-gray-50 transition-colors ${
-                  idx !== menuItems.length - 1 ? 'border-b border-gray-100' : ''
+                className={`w-full flex items-center gap-4 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                  idx !== menuItems.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''
                 } ${activeTab === item.id ? 'bg-red-50' : ''}`}
               >
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  activeTab === item.id ? 'bg-zomato-red text-white' : 'bg-gray-100 text-gray-600'
+                  activeTab === item.id ? 'bg-zomato-red text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
                 }`}>
                   <item.icon className="w-5 h-5" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-medium text-gray-900 text-sm">{item.label}</h3>
-                  <p className="text-xs text-gray-500">{item.desc}</p>
+                  <h3 className="font-medium text-gray-900 dark:text-white text-sm">{item.label}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{item.desc}</p>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-400" />
               </button>
             ))}
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center gap-4 p-4 text-left hover:bg-gray-50 transition-colors text-zomato-red"
+              className="w-full flex items-center gap-4 p-4 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-zomato-red"
             >
               <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
                 <LogOut className="w-5 h-5" />
@@ -129,10 +129,10 @@ export default function Account() {
         <div className="md:col-span-2">
           {activeTab === 'orders' && (
             <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Orders</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Recent Orders</h2>
               <div className="space-y-4">
                 {orders.length === 0 ? (
-                  <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center text-gray-500">
+                  <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-8 text-center text-gray-500 dark:text-gray-400">
                     No recent orders found.
                   </div>
                 ) : (
@@ -140,17 +140,17 @@ export default function Account() {
                     const status = order.status || 'placed';
                     const badgeStyle = STATUS_BADGE_STYLES[status] || STATUS_BADGE_STYLES.placed;
                     return (
-                    <div key={order.Orderid} className="bg-white border border-gray-100 rounded-2xl p-5 hover:shadow-md transition-shadow">
+                    <div key={order.Orderid} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-5 hover:shadow-md transition-shadow">
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h3 className="font-bold text-gray-900 text-lg">
+                          <h3 className="font-bold text-gray-900 dark:text-white text-lg">
                             {order.restrauntName || 'Restaurant Order'}
                           </h3>
-                          <p className="text-sm text-gray-500 mt-0.5">
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                             Order #{order.Orderid} • {new Date(order.createdAt).toLocaleString()}
                           </p>
                           {order.orderedItems && (
-                            <p className="text-sm text-gray-600 mt-2 line-clamp-1">
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 line-clamp-1">
                               {renderItems(order.orderedItems)}
                             </p>
                           )}
@@ -159,8 +159,8 @@ export default function Account() {
                           {status.replace(/_/g, ' ')}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100">
-                        <span className="font-bold text-gray-900 text-lg">₹{order.totalAmount}</span>
+                      <div className="flex items-center justify-between pt-4 mt-2 border-t border-gray-100 dark:border-gray-700">
+                        <span className="font-bold text-gray-900 dark:text-white text-lg">₹{order.totalAmount}</span>
                         <Link to={`/order/${order.Orderid}`} className="text-sm text-white bg-zomato-red font-medium px-4 py-2 rounded-lg hover:bg-zomato-red-dark transition-colors">
                           View Details
                         </Link>
@@ -175,9 +175,9 @@ export default function Account() {
 
           {activeTab === 'favorites' && (
             <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Favorite Restaurants</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Favorite Restaurants</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center text-gray-500 sm:col-span-2">
+                <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-8 text-center text-gray-500 dark:text-gray-400 sm:col-span-2">
                   No favorite restaurants saved yet.
                 </div>
               </div>
@@ -186,9 +186,9 @@ export default function Account() {
 
           {activeTab === 'addresses' && (
             <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Saved Addresses</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Saved Addresses</h2>
               <div className="space-y-4">
-                <button className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-5 text-gray-500 hover:border-zomato-red hover:text-zomato-red transition-colors">
+                <button className="w-full border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-5 text-gray-500 dark:text-gray-400 hover:border-zomato-red hover:text-zomato-red transition-colors">
                   + Add new address
                 </button>
               </div>
@@ -197,9 +197,9 @@ export default function Account() {
 
           {activeTab === 'payments' && (
             <div>
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Payment Methods</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Payment Methods</h2>
               <div className="space-y-4">
-                <button className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-5 text-gray-500 hover:border-zomato-red hover:text-zomato-red transition-colors">
+                <button className="w-full border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-2xl p-5 text-gray-500 dark:text-gray-400 hover:border-zomato-red hover:text-zomato-red transition-colors">
                   + Add payment method
                 </button>
               </div>
@@ -207,12 +207,12 @@ export default function Account() {
           )}
 
           {(activeTab === 'profile' || activeTab === 'notifications' || activeTab === 'rewards' || activeTab === 'help') && (
-            <div className="bg-white border border-gray-100 rounded-2xl p-8 text-center">
-              <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-8 text-center">
+              <div className="w-16 h-16 mx-auto bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
                 <User className="w-8 h-8 text-gray-400" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Coming Soon</h2>
-              <p className="text-gray-500">This section is under development. Check back later!</p>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Coming Soon</h2>
+              <p className="text-gray-500 dark:text-gray-400">This section is under development. Check back later!</p>
             </div>
           )}
         </div>

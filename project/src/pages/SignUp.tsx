@@ -86,7 +86,7 @@ export default function Signup() {
           </div>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-6 text-sm font-medium">
+            <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg mb-6 text-sm font-medium">
               {error}
             </div>
           )}
@@ -146,7 +146,7 @@ export default function Signup() {
 
           <p className="mt-8 text-center text-gray-600 dark:text-gray-400">
             Already have an account?{' '}
-            <Link to="/login" className="text-zomato-red hover:text-red-700 font-bold">
+            <Link to="/login" className="text-zomato-red hover:text-red-700 dark:hover:text-red-400 font-bold">
               Log in here
             </Link>
           </p>

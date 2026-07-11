@@ -43,6 +43,9 @@ export default function VendorDashboard() {
   const todaysRevenue = todaysOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
   const pendingOrders = orders.filter((o) => !['delivered', 'cancelled'].includes(o.status)).length;
   const totalRevenue = orders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+  const recentOrders = [...orders].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
 
   const stats = [
     { label: "Today's Orders", value: todaysOrders.length, icon: ShoppingBag, color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
@@ -82,7 +85,7 @@ export default function VendorDashboard() {
           <p className="text-gray-500 dark:text-gray-400 text-sm py-6">No orders yet.</p>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-700">
-            {orders.slice(0, 5).map((o) => (
+            {recentOrders.slice(0, 5).map((o) => (
               <div key={o.Orderid} className="flex items-center justify-between py-3">
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white">#{o.Orderid}</p>

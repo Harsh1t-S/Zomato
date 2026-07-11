@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, MapPin, ShoppingCart, Menu, X, ChevronDown, Moon, Sun } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -16,6 +16,18 @@ export default function Header() {
   const [location, setLocation] = useState('Delhi NCR');
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenu, setMobileMenu] = useState(false);
+  const locationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!locationOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setLocationOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [locationOpen]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,7 +48,7 @@ export default function Header() {
           </Link>
 
           <div className="hidden md:flex flex-1 max-w-3xl items-center gap-2">
-            <div className="relative">
+            <div className="relative" ref={locationRef}>
               <button
                 onClick={() => setLocationOpen(!locationOpen)}
                 className="flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 border-r border-gray-200 dark:border-gray-700"

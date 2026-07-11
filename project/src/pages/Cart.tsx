@@ -104,16 +104,16 @@ export default function Cart() {
         <div className="w-24 h-24 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-6 animate-scale-in">
           <Check className="w-12 h-12 text-green-600" />
         </div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-3">Order Placed Successfully!</h1>
-        <p className="text-gray-500 mb-8">Your order is being prepared. Estimated delivery in 30-35 minutes.</p>
-        <div className="bg-gray-50 rounded-2xl p-6 mb-8 text-left">
-          <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-200">
-            <span className="text-gray-600">Order ID</span>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">Order Placed Successfully!</h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-8">Your order is being prepared. Estimated delivery in 30-35 minutes.</p>
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-6 mb-8 text-left">
+          <div className="flex justify-between items-center mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <span className="text-gray-600 dark:text-gray-300">Order ID</span>
             <div className="flex items-center gap-2">
               <span className="font-mono font-bold text-lg text-zomato-red">#{finalOrder.id}</span>
               <button 
                 onClick={copyToClipboard}
-                className="p-2 hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1 text-sm text-gray-600"
+                className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300"
               >
                 {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
                 {copied ? 'Copied' : 'Copy'}
@@ -121,11 +121,11 @@ export default function Cart() {
             </div>
           </div>
           <div className="flex justify-between mb-2">
-            <span className="text-gray-600">Total Amount</span>
+            <span className="text-gray-600 dark:text-gray-300">Total Amount</span>
             <span className="font-semibold">₹{finalOrder.total}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Items</span>
+            <span className="text-gray-600 dark:text-gray-300">Items</span>
             <span className="font-semibold">{finalOrder.items} items</span>
           </div>
         </div>
@@ -144,11 +144,11 @@ export default function Cart() {
   if (items.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <div className="w-24 h-24 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-6">
+        <div className="w-24 h-24 mx-auto bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6">
           <ShoppingBag className="w-12 h-12 text-gray-400" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-3">Your cart is empty</h1>
-        <p className="text-gray-500 mb-8">Looks like you haven't added anything to your cart yet</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Your cart is empty</h1>
+        <p className="text-gray-500 dark:text-gray-400 mb-8">Looks like you haven't added anything to your cart yet</p>
         <Link to="/" className="inline-block bg-zomato-red text-white font-semibold px-8 py-3 rounded-lg hover:bg-zomato-red-dark transition-colors">
           Browse Restaurants
         </Link>
@@ -158,25 +158,25 @@ export default function Cart() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <Link to="/" className="flex items-center gap-2 text-sm text-gray-500 hover:text-zomato-red mb-6">
+      <Link to="/" className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-zomato-red mb-6">
         <ArrowLeft className="w-4 h-4" />
         Continue shopping
       </Link>
 
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">Your Cart</h1>
-      <p className="text-gray-500 mb-8">{totalItems} items from {items[0].restaurantName}</p>
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Your Cart</h1>
+      <p className="text-gray-500 dark:text-gray-400 mb-8">{totalItems} items from {items[0].restaurantName}</p>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
-          <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-bold text-gray-900">Order Items</h2>
-              <button onClick={clearCart} className="text-sm text-gray-500 hover:text-zomato-red flex items-center gap-1">
+          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <h2 className="font-bold text-gray-900 dark:text-white">Order Items</h2>
+              <button onClick={clearCart} className="text-sm text-gray-500 dark:text-gray-400 hover:text-zomato-red flex items-center gap-1">
                 <Trash2 className="w-4 h-4" />
                 Clear cart
               </button>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-gray-100 dark:divide-gray-700">
               {items.map((ci) => (
                 <div key={ci.item.id} className="p-4 flex items-center gap-4">
                   <img
@@ -188,9 +188,9 @@ export default function Cart() {
                     }}
                   />
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900">{ci.item.name}</h3>
-                    <p className="text-sm text-gray-500 line-clamp-1">{ci.item.description}</p>
-                    <p className="font-semibold text-gray-900 mt-1">₹{ci.item.price}</p>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">{ci.item.name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1">{ci.item.description}</p>
+                    <p className="font-semibold text-gray-900 dark:text-white mt-1">₹{ci.item.price}</p>
                   </div>
                   <div className="flex items-center gap-2 bg-zomato-red text-white rounded-lg">
                     <button onClick={() => updateQuantity(ci.item.id, -1)} className="p-2 hover:bg-zomato-red-dark rounded-l-lg transition-colors">
@@ -202,7 +202,7 @@ export default function Cart() {
                     </button>
                   </div>
                   <div className="text-right shrink-0 w-20">
-                    <p className="font-bold text-gray-900">₹{ci.item.price * ci.quantity}</p>
+                    <p className="font-bold text-gray-900 dark:text-white">₹{ci.item.price * ci.quantity}</p>
                   </div>
                   <button onClick={() => removeItem(ci.item.id)} className="text-gray-400 hover:text-zomato-red p-1">
                     <Trash2 className="w-4 h-4" />
@@ -212,35 +212,35 @@ export default function Cart() {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-100 rounded-2xl p-5 mt-6">
-            <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
+          <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-5 mt-6">
+            <h3 className="font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
               <MapPin className="w-5 h-5 text-zomato-red" />
               Delivery Address
             </h3>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="font-medium text-gray-900">Home</p>
-              <p className="text-sm text-gray-500 mt-1">Flat 204, Green Residency, Sector 18, Noida, Uttar Pradesh - 201301</p>
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+              <p className="font-medium text-gray-900 dark:text-white">Home</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Flat 204, Green Residency, Sector 18, Noida, Uttar Pradesh - 201301</p>
             </div>
           </div>
         </div>
 
         <aside>
           <div className="sticky top-32">
-            <div className="bg-white border border-gray-100 rounded-2xl p-6">
-              <h3 className="font-bold text-gray-900 mb-4">Bill Details</h3>
+            <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-6">
+              <h3 className="font-bold text-gray-900 dark:text-white mb-4">Bill Details</h3>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Item Total</span>
+                  <span className="text-gray-600 dark:text-gray-300">Item Total</span>
                   <span className="font-medium">₹{totalPrice}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Delivery Fee</span>
+                  <span className="text-gray-600 dark:text-gray-300">Delivery Fee</span>
                   <span className="font-medium">
                     {deliveryFee === 0 ? <span className="text-green-600">FREE</span> : `₹${deliveryFee}`}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Taxes & Charges (5%)</span>
+                  <span className="text-gray-600 dark:text-gray-300">Taxes & Charges (5%)</span>
                   <span className="font-medium">₹{taxes}</span>
                 </div>
                 {discount > 0 && (
@@ -249,14 +249,14 @@ export default function Cart() {
                     <span className="font-medium">-₹{discount}</span>
                   </div>
                 )}
-                <div className="border-t border-gray-100 pt-3 flex justify-between">
-                  <span className="font-bold text-gray-900">To Pay</span>
-                  <span className="font-bold text-gray-900">₹{grandTotal}</span>
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-3 flex justify-between">
+                  <span className="font-bold text-gray-900 dark:text-white">To Pay</span>
+                  <span className="font-bold text-gray-900 dark:text-white">₹{grandTotal}</span>
                 </div>
               </div>
 
-              <div className="mt-5 pt-5 border-t border-gray-100">
-                <h4 className="font-semibold text-gray-900 mb-2 text-sm flex items-center gap-2">
+              <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700">
+                <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm flex items-center gap-2">
                   <Tag className="w-4 h-4 text-zomato-red" />
                   Apply Promo Code
                 </h4>
@@ -272,7 +272,7 @@ export default function Cart() {
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value)}
                       placeholder="Enter code"
-                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm outline-none focus:border-zomato-red"
+                      className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 dark:bg-gray-900 dark:text-white text-sm outline-none focus:border-zomato-red"
                     />
                     <button
                       onClick={applyPromo}

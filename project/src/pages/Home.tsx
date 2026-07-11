@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, MapPin, ChevronDown, Utensils, Leaf, Clock, Star } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { cities } from '../data/restaurants';
 import RestaurantCard from '../components/RestaurantCard';
 import SectionHeader from '../components/SectionHeader';
@@ -14,6 +14,18 @@ export default function Home() {
   
   const [liveRestaurants, setLiveRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const locationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!locationOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setLocationOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [locationOpen]);
 
   useEffect(() => {
     apiJson<any[]>('/api/restraunt/all')
@@ -61,7 +73,7 @@ export default function Home() {
           </p>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-2 flex flex-col md:flex-row gap-2 w-full max-w-4xl mx-auto">
-            <div className="relative md:w-56">
+            <div className="relative md:w-56" ref={locationRef}>
               <button
                 onClick={() => setLocationOpen(!locationOpen)}
                 className="w-full flex items-center gap-2 px-4 py-3.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 border-r border-gray-200 dark:border-gray-700 text-left"
@@ -149,18 +161,27 @@ export default function Home() {
         </section>
       ) : (
         <>
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <SectionHeader title="Trending This Week" subtitle="Most loved restaurants in town right now" link="/search" linkText="See all restaurants" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {trendingRestaurants.map((r) => <RestaurantCard key={r.id} restaurant={r} />)}
-            </div>
-          </section>
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <SectionHeader title="Featured Restaurants" subtitle="Handpicked premium dining experiences" link="/search" linkText="See all" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {featuredRestaurants.map((r) => <RestaurantCard key={r.id} restaurant={r} />)}
-            </div>
-          </section>
+          {trendingRestaurants.length > 0 && (
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <SectionHeader title="Trending This Week" subtitle="Most loved restaurants in town right now" link="/search" linkText="See all restaurants" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {trendingRestaurants.map((r) => <RestaurantCard key={r.id} restaurant={r} />)}
+              </div>
+            </section>
+          )}
+          {featuredRestaurants.length > 0 && (
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+              <SectionHeader title="Featured Restaurants" subtitle="Handpicked premium dining experiences" link="/search" linkText="See all" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {featuredRestaurants.map((r) => <RestaurantCard key={r.id} restaurant={r} />)}
+              </div>
+            </section>
+          )}
+          {liveRestaurants.length === 0 && (
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+              <p className="text-gray-500 dark:text-gray-400 text-lg">No restaurants available yet. Check back soon!</p>
+            </section>
+          )}
         </>
       )}
     </div>

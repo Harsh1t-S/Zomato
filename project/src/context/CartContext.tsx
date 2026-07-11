@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import type { MenuItem } from '../data/restaurants';
 
 export interface CartItem {
@@ -26,8 +26,23 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+const STORAGE_KEY = 'zomato_cart';
+
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  // Persist to localStorage so a refresh (or an interrupted payment) doesn't
+  // silently wipe out whatever the customer had queued up.
+  const [items, setItems] = useState<CartItem[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
 
   const addItem = (item: MenuItem, restaurantId: string, restaurantName: string, force = false): AddResult => {
     const currentRestaurantId = items.length > 0 ? items[0].restaurantId : null;
