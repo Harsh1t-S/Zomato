@@ -19,7 +19,6 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    // Ensure this URL matches where you are actually hosting the backend (Railway, Render, or localhost)
     const endpoint = isVendor 
       ? 'https://zomato-production-1f03.up.railway.app/api/vendors/login'
       : 'https://zomato-production-1f03.up.railway.app/api/users/login';
@@ -35,6 +34,11 @@ export default function Login() {
         setError('Invalid phone number or password.');
       } else {
         const data = await resp.json();
+        
+        if (data.role === 'vendor' && data.ownerName) {
+            data.name = data.ownerName;
+        }
+
         login(data);
         
         if (data.role === 'vendor') {
@@ -65,7 +69,6 @@ export default function Login() {
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Welcome Back</h2>
           <p className="text-gray-500 dark:text-gray-400 mb-6">Login in to your account</p>
 
-          {/* Account Type Toggle */}
           <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-xl mb-6">
             <button
               type="button"

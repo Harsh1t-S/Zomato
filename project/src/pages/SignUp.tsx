@@ -47,7 +47,8 @@ export default function Signup() {
         throw new Error(data.error || 'Failed to register account');
       }
 
-      login(isVendor ? { ...data, role: 'vendor' } : data);
+      const vendorData = isVendor ? { ...data, role: 'vendor', name: data.ownerName } : data;
+      login(vendorData);
       
       if (isVendor) {
         navigate('/vendor/dashboard');

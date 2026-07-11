@@ -19,6 +19,7 @@ import AddFood from './Admin/AddFood';
 import VendorLayout from './Vendor/VendorLayout';
 import VendorMenu from './Vendor/VendorMenu';
 import VendorOrders from './Vendor/VendorOrders';
+import VendorProfile from './Vendor/VendorProfile';
 
 export default function App() {
   return (
@@ -59,6 +60,7 @@ export default function App() {
               <Route path="dashboard" element={<h1 className="text-3xl font-bold dark:text-white">Dashboard Overview</h1>} />
               <Route path="menu" element={<VendorMenu />} />
               <Route path="orders" element={<VendorOrders />} />
+              <Route path="profile" element={<VendorProfile />} />
             </Route>
 
             <Route path="/admin" element={<UserData />} />
