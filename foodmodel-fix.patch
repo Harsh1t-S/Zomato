@@ -1,0 +1,38 @@
+From 4ca2e32cde1a5e5850eca2ffd75b9077ff70adbc Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 11 Jul 2026 08:13:38 +0000
+Subject: [PATCH] Fix FoodModel.restrauntId type mismatch (INTEGER vs STRING
+ restaurant IDs)
+
+Restaurant IDs are app-generated strings (e.g. v42-1712345678901 from
+VendorSetup.tsx) matching restaurants.id (STRING primary key), but
+Food.restrauntId was defined as INTEGER. MySQL rejected the insert for any
+non-numeric restaurant id, surfaced to vendors as the generic 'Failed to
+add food item' error. OrderModel already had this column correctly typed
+as STRING for the same reason - FoodModel was the outlier.
+---
+ BackEnd/Models/FoodModel.js | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/BackEnd/Models/FoodModel.js b/BackEnd/Models/FoodModel.js
+index a91c979..c72f7ef 100644
+--- a/BackEnd/Models/FoodModel.js
++++ b/BackEnd/Models/FoodModel.js
+@@ -2,8 +2,13 @@ const db = require('../Config/db');
+ const { DataTypes } = require('sequelize');
+ 
+ const Food = db.define('Food', {
++    // Restaurant IDs are app-generated strings (e.g. `v42-1712345678901`,
++    // see VendorSetup.tsx), matching restaurants.id (DataTypes.STRING) —
++    // this must match, not INTEGER, or MySQL rejects the insert with a type
++    // error on every non-numeric restaurant id (surfaced to vendors as the
++    // generic "Failed to add food item").
+     restrauntId: {
+-        type: DataTypes.INTEGER,
++        type: DataTypes.STRING,
+         allowNull: false,
+     },
+     name: {
+-- 
+2.43.0
+
