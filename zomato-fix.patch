@@ -1,0 +1,625 @@
+From 65ba179e36765f79c659592c6428dbecae9515c7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 11 Jul 2026 06:41:23 +0000
+Subject: [PATCH] Fix admin logout, remove admin add-food capability, and fix
+ vendorId column mismatch
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Admin dashboard (UserData.tsx) had no logout affordance at all (unlike the
+  vendor and user areas, which both already had one). Added a logout button
+  that clears auth state and redirects to /login. The empty AdminLogin.tsx
+  and unused admin AddFood.tsx were dead files (App.tsx logs admin in via the
+  existing Login.tsx role picker against /api/admin/login) — removed both.
+
+- Per the intended design (admin approves vendors + moderates food; vendors
+  own their menu via VendorMenu.tsx), removed the admin "Add Menu Item" route
+  (/admin/addFood) and nav link, and restricted POST/PUT /api/food to the
+  vendor role only in FoodRoutes.js. Added an admin-only PATCH
+  /api/food/:id/flag endpoint (FoodController.flagFood) backed by a new
+  isFlagged column on FoodModel, and a "Food Items" tab in the admin
+  dashboard to flag/unflag and delete (DELETE /api/food/:id, already
+  admin+vendor) any item — replacing admin's create capability with
+  moderation as intended.
+
+- Root-caused the "Unknown column 'vendorId' in field list" error on
+  /vendor/setup and the restaurants not appearing on the site: both are the
+  same bug. Server.js called db.sync() (no options), which only creates
+  tables that don't exist yet — it never adds new columns to a table that's
+  already deployed. vendorId was added to RestrauntModel after the
+  restaurants table already existed on Railway, so every INSERT/SELECT
+  referencing it (restaurant creation, and the vendorId-based approval
+  filtering in getAllRestaurants) failed against the live schema. Switched
+  both Server.js and seed.js to db.sync({ alter: true }) so Sequelize
+  reconciles column differences on boot instead of silently no-op'ing.
+---
+ BackEnd/Controllers/FoodController.js |  22 +++
+ BackEnd/Models/FoodModel.js           |   5 +
+ BackEnd/Routes/FoodRoutes.js          |   9 +-
+ BackEnd/Server.js                     |   8 +-
+ BackEnd/seed.js                       |   4 +-
+ project/src/Admin/AddFood.tsx         | 216 --------------------------
+ project/src/Admin/AdminLogin.tsx      |   0
+ project/src/Admin/UserData.tsx        | 135 +++++++++++++++-
+ project/src/App.tsx                   |   6 -
+ 9 files changed, 171 insertions(+), 234 deletions(-)
+ delete mode 100644 project/src/Admin/AddFood.tsx
+ delete mode 100644 project/src/Admin/AdminLogin.tsx
+
+diff --git a/BackEnd/Controllers/FoodController.js b/BackEnd/Controllers/FoodController.js
+index ea13301..33f9645 100644
+--- a/BackEnd/Controllers/FoodController.js
++++ b/BackEnd/Controllers/FoodController.js
+@@ -66,6 +66,8 @@ const deleteFood = async (req, res) => {
+             return res.status(404).json({ error: 'Food item not found' });
+         }
+ 
++        // Vendors may only delete items on their own restaurant. Admins may
++        // remove any item (moderation), so no ownership check for them.
+         if (req.auth.role === 'vendor') {
+             const restaurant = await Restraunt.findByPk(food.restrauntId);
+             if (!restaurant || String(restaurant.vendorId) !== String(req.auth.id)) {
+@@ -80,9 +82,29 @@ const deleteFood = async (req, res) => {
+     }
+ };
+ 
++// Admin-only: flag or unflag a food item for moderation, instead of editing
++// or removing it outright. If `isFlagged` isn't provided in the body, the
++// current value is toggled.
++const flagFood = async (req, res) => {
++    try {
++        const { id } = req.params;
++        const food = await Food.findByPk(id);
++        if (!food) {
++            return res.status(404).json({ error: 'Food item not found' });
++        }
++
++        const isFlagged = typeof req.body.isFlagged === 'boolean' ? req.body.isFlagged : !food.isFlagged;
++        await food.update({ isFlagged });
++        res.json(food);
++    } catch (error) {
++        res.status(500).json({ error: error.message });
++    }
++};
++
+ module.exports = {
+     getAllFood,
+     addFood,
+     updateFood,
+     deleteFood,
++    flagFood,
+ };
+diff --git a/BackEnd/Models/FoodModel.js b/BackEnd/Models/FoodModel.js
+index 0804074..a91c979 100644
+--- a/BackEnd/Models/FoodModel.js
++++ b/BackEnd/Models/FoodModel.js
+@@ -31,6 +31,11 @@ const Food = db.define('Food', {
+         allowNull: false,
+         defaultValue: false,
+     },
++    isFlagged: {
++        type: DataTypes.BOOLEAN,
++        allowNull: false,
++        defaultValue: false,
++    },
+ 
+ });
+ 
+diff --git a/BackEnd/Routes/FoodRoutes.js b/BackEnd/Routes/FoodRoutes.js
+index e1420e4..54ab010 100644
+--- a/BackEnd/Routes/FoodRoutes.js
++++ b/BackEnd/Routes/FoodRoutes.js
+@@ -1,12 +1,15 @@
+-const { getAllFood, addFood, updateFood, deleteFood } = require('../Controllers/FoodController');
++const { getAllFood, addFood, updateFood, deleteFood, flagFood } = require('../Controllers/FoodController');
+ const { requireAuth, requireRole } = require('../Middleware/auth');
+ 
+ const express = require('express');
+ const router = express.Router();
+ 
+ router.get('/', getAllFood);
+-router.post('/', requireAuth, requireRole('vendor', 'admin'), addFood);
+-router.put('/:id', requireAuth, requireRole('vendor', 'admin'), updateFood);
++// Menu items are managed by the vendor that owns the restaurant — admins do
++// not create or edit menu content, only moderate it (flag/remove below).
++router.post('/', requireAuth, requireRole('vendor'), addFood);
++router.put('/:id', requireAuth, requireRole('vendor'), updateFood);
++router.patch('/:id/flag', requireAuth, requireRole('admin'), flagFood);
+ router.delete('/:id', requireAuth, requireRole('vendor', 'admin'), deleteFood);
+ 
+ module.exports = router;
+diff --git a/BackEnd/Server.js b/BackEnd/Server.js
+index c1988ea..4ff15a6 100644
+--- a/BackEnd/Server.js
++++ b/BackEnd/Server.js
+@@ -30,7 +30,13 @@ app.get('/', (req, res) => {
+ db.authenticate()
+     .then(() => {
+         console.log('Database connected...');
+-        return db.sync();
++        // { alter: true } makes Sequelize diff each model against the live table
++        // and add/modify columns to match (e.g. `vendorId` on restaurants,
++        // `isFlagged` on food) instead of silently no-op'ing on tables that
++        // already exist. Without this, new columns added to a model never
++        // reach an already-deployed database and every query touching them
++        // fails with "Unknown column '...' in field list".
++        return db.sync({ alter: true });
+     })
+     .then(() => {
+         console.log('Database synchronized.');
+diff --git a/BackEnd/seed.js b/BackEnd/seed.js
+index 927532e..6c331be 100644
+--- a/BackEnd/seed.js
++++ b/BackEnd/seed.js
+@@ -20,7 +20,9 @@ const IMG = {
+ 
+ const seedDatabase = async () => {
+     try {
+-        await db.sync();
++        // Keep this in sync with Server.js — alter existing tables to match
++        // the current models rather than silently skipping missing columns.
++        await db.sync({ alter: true });
+ 
+         const count = await Restaurant.count();
+         if (count > 0) {
+diff --git a/project/src/Admin/AddFood.tsx b/project/src/Admin/AddFood.tsx
+deleted file mode 100644
+index d298840..0000000
+--- a/project/src/Admin/AddFood.tsx
++++ /dev/null
+@@ -1,216 +0,0 @@
+-import { useState, useEffect } from 'react';
+-import { Utensils, PlusCircle, Image as ImageIcon, FileText, IndianRupee, Store, Tag, CheckCircle, Moon, Sun } from 'lucide-react';
+-import { useTheme } from '../context/ThemeContext';
+-import { apiJson } from '../lib/api';
+-
+-export default function AddFood() {
+-  const [restaurants, setRestaurants] = useState<any[]>([]);
+-  const [loading, setLoading] = useState(false);
+-  const [success, setSuccess] = useState(false);
+-  const [error, setError] = useState('');
+-  const { darkMode, toggleDarkMode } = useTheme();
+-
+-  const [formData, setFormData] = useState({
+-    restrauntId: '',
+-    name: '',
+-    description: '',
+-    price: '',
+-    category: '',
+-    imageUrl: '',
+-    veg: false
+-  });
+-
+-  useEffect(() => {
+-    apiJson<any[]>('/api/restraunt/all')
+-      .then((data) => { if (Array.isArray(data)) setRestaurants(data); })
+-      .catch((err) => console.error(err));
+-  }, []);
+-
+-  const handleSubmit = async (e: React.FormEvent) => {
+-    e.preventDefault();
+-    setLoading(true);
+-    setError('');
+-    setSuccess(false);
+-
+-    try {
+-      const payload = {
+-        ...formData,
+-        price: parseFloat(formData.price),
+-        restrauntId: parseInt(formData.restrauntId)
+-      };
+-
+-      await apiJson('/api/food', { method: 'POST', body: JSON.stringify(payload) });
+-
+-      setSuccess(true);
+-      setFormData({
+-        restrauntId: formData.restrauntId,
+-        name: '',
+-        description: '',
+-        price: '',
+-        category: '',
+-        imageUrl: '',
+-        veg: false
+-      });
+-
+-      setTimeout(() => setSuccess(false), 3000);
+-    } catch (err: any) {
+-      setError(err.message);
+-    } finally {
+-      setLoading(false);
+-    }
+-  };
+-
+-  return (
+-    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+-      <div className="max-w-3xl mx-auto">
+-        <div className="mb-8 flex justify-between items-start">
+-          <div>
+-            <h1 className="text-3xl font-bold flex items-center gap-3 text-gray-900 dark:text-white">
+-              <Utensils className="w-8 h-8 text-zomato-red" />
+-              Add Menu Item
+-            </h1>
+-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+-              Create new food items and assign them to existing restaurants.
+-            </p>
+-          </div>
+-          <button
+-            onClick={toggleDarkMode}
+-            className="p-3 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-yellow-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+-          >
+-            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+-          </button>
+-        </div>
+-
+-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden p-8 transition-colors duration-300">
+-          {success && (
+-            <div className="mb-6 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg flex items-center gap-2">
+-              <CheckCircle className="w-5 h-5" />
+-              Food item added successfully to database!
+-            </div>
+-          )}
+-
+-          {error && (
+-            <div className="mb-6 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg">
+-              {error}
+-            </div>
+-          )}
+-
+-          <form onSubmit={handleSubmit} className="space-y-6">
+-            <div>
+-              <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
+-                <Store className="w-4 h-4 text-gray-400" />
+-                Select Restaurant
+-              </label>
+-              <select
+-                required
+-                value={formData.restrauntId}
+-                onChange={e => setFormData({...formData, restrauntId: e.target.value})}
+-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+-              >
+-                <option value="" disabled className="text-gray-500">Choose a restaurant...</option>
+-                {restaurants.map(r => (
+-                  <option key={r.id} value={r.id} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+-                    {r.name} (ID: {r.id})
+-                  </option>
+-                ))}
+-              </select>
+-            </div>
+-
+-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+-              <div>
+-                <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
+-                  <Utensils className="w-4 h-4 text-gray-400" />
+-                  Food Name
+-                </label>
+-                <input
+-                  required
+-                  type="text"
+-                  value={formData.name}
+-                  onChange={e => setFormData({...formData, name: e.target.value})}
+-                  placeholder="e.g. Butter Chicken"
+-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+-                />
+-              </div>
+-
+-              <div>
+-                <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
+-                  <IndianRupee className="w-4 h-4 text-gray-400" />
+-                  Price (₹)
+-                </label>
+-                <input
+-                  required
+-                  type="number"
+-                  step="0.01"
+-                  value={formData.price}
+-                  onChange={e => setFormData({...formData, price: e.target.value})}
+-                  placeholder="0.00"
+-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+-                />
+-              </div>
+-            </div>
+-
+-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+-              <div>
+-                <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
+-                  <Tag className="w-4 h-4 text-gray-400" />
+-                  Category
+-                </label>
+-                <input
+-                  required
+-                  type="text"
+-                  value={formData.category}
+-                  onChange={e => setFormData({...formData, category: e.target.value})}
+-                  placeholder="e.g. Main Course, Starter"
+-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+-                />
+-              </div>
+-
+-              <div>
+-                <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
+-                  <ImageIcon className="w-4 h-4 text-gray-400" />
+-                  Image URL
+-                </label>
+-                <input
+-                  required
+-                  type="url"
+-                  value={formData.imageUrl}
+-                  onChange={e => setFormData({...formData, imageUrl: e.target.value})}
+-                  placeholder="https://images.unsplash.com/..."
+-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+-                />
+-              </div>
+-            </div>
+-
+-            <div>
+-              <label className="flex items-center gap-2 text-sm font-semibold mb-2 text-gray-900 dark:text-gray-200">
+-                <FileText className="w-4 h-4 text-gray-400" />
+-                Description
+-              </label>
+-              <textarea
+-                required
+-                rows={3}
+-                value={formData.description}
+-                onChange={e => setFormData({...formData, description: e.target.value})}
+-                placeholder="Describe the dish ingredients and flavor..."
+-                className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 focus:border-zomato-red dark:focus:border-zomato-red outline-none bg-transparent text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 resize-none"
+-              />
+-            </div>
+-
+-            <label className="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-900 dark:text-gray-200">
+-              <input type="checkbox" checked={formData.veg} onChange={e => setFormData({...formData, veg: e.target.checked})} className="w-4 h-4 accent-green-600" />
+-              This is a vegetarian dish
+-            </label>
+-
+-            <button
+-              type="submit"
+-              disabled={loading}
+-              className="w-full bg-zomato-red text-white font-bold py-3.5 rounded-xl hover:bg-zomato-red-dark transition-colors flex items-center justify-center gap-2"
+-            >
+-              {loading ? 'Adding Food...' : <><PlusCircle className="w-5 h-5" /> Submit to Database</>}
+-            </button>
+-          </form>
+-        </div>
+-      </div>
+-    </div>
+-  );
+-}
+diff --git a/project/src/Admin/AdminLogin.tsx b/project/src/Admin/AdminLogin.tsx
+deleted file mode 100644
+index e69de29..0000000
+diff --git a/project/src/Admin/UserData.tsx b/project/src/Admin/UserData.tsx
+index 286512b..db13646 100644
+--- a/project/src/Admin/UserData.tsx
++++ b/project/src/Admin/UserData.tsx
+@@ -1,7 +1,8 @@
+ import { useState, useEffect } from 'react';
+-import { Link } from 'react-router-dom';
+-import { Users, Phone, Shield, Moon, Sun, ShoppingBag, IndianRupee, Store, CheckCircle, Clock } from 'lucide-react';
++import { useNavigate } from 'react-router-dom';
++import { Users, Phone, Shield, Moon, Sun, ShoppingBag, IndianRupee, Store, CheckCircle, Clock, LogOut, Flag, Trash2, Utensils } from 'lucide-react';
+ import { useTheme } from '../context/ThemeContext';
++import { useAuth } from '../context/AuthContext';
+ import { apiJson } from '../lib/api';
+ 
+ interface User {
+@@ -24,23 +25,37 @@ interface Vendor {
+     isApproved: boolean;
+ }
+ 
++interface FoodItem {
++    id: number;
++    restrauntId: number | string;
++    name: string;
++    category: string;
++    price: number | string;
++    isFlagged?: boolean;
++}
++
+ export default function UserData() {
+     const [userData, setUserData] = useState<User[]>([]);
+     const [ordersData, setOrdersData] = useState<Order[]>([]);
+     const [vendors, setVendors] = useState<Vendor[]>([]);
+-    const [tab, setTab] = useState<'users' | 'vendors'>('users');
++    const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
++    const [tab, setTab] = useState<'users' | 'vendors' | 'food'>('users');
+     const { darkMode, toggleDarkMode } = useTheme();
++    const { logout } = useAuth();
++    const navigate = useNavigate();
+ 
+     const loadData = async () => {
+         try {
+-            const [users, orders, vendorList] = await Promise.all([
++            const [users, orders, vendorList, food] = await Promise.all([
+                 apiJson<User[]>('/api/users/all'),
+                 apiJson<Order[]>('/api/orders/all'),
+                 apiJson<Vendor[]>('/api/vendors/all'),
++                apiJson<FoodItem[]>('/api/food'),
+             ]);
+             if (Array.isArray(users)) setUserData(users);
+             if (Array.isArray(orders)) setOrdersData(orders);
+             if (Array.isArray(vendorList)) setVendors(vendorList);
++            if (Array.isArray(food)) setFoodItems(food);
+         } catch (error) {
+             console.error(error);
+         }
+@@ -50,6 +65,11 @@ export default function UserData() {
+         loadData();
+     }, []);
+ 
++    const handleLogout = () => {
++        logout();
++        navigate('/login');
++    };
++
+     const approveVendor = async (id: number) => {
+         try {
+             await apiJson(`/api/vendors/approve/${id}`, { method: 'PUT' });
+@@ -59,6 +79,28 @@ export default function UserData() {
+         }
+     };
+ 
++    const toggleFlagFood = async (id: number, current: boolean) => {
++        try {
++            const updated = await apiJson<FoodItem>(`/api/food/${id}/flag`, {
++                method: 'PATCH',
++                body: JSON.stringify({ isFlagged: !current }),
++            });
++            setFoodItems((prev) => prev.map((f) => (f.id === id ? { ...f, isFlagged: updated.isFlagged } : f)));
++        } catch (error) {
++            console.error(error);
++        }
++    };
++
++    const removeFood = async (id: number) => {
++        if (!confirm('Remove this food item from the platform?')) return;
++        try {
++            await apiJson(`/api/food/${id}`, { method: 'DELETE' });
++            setFoodItems((prev) => prev.filter((f) => f.id !== id));
++        } catch (error) {
++            console.error(error);
++        }
++    };
++
+     const getUserStats = (number: string) => {
+         const userOrders = ordersData.filter(o => o.number === number);
+         const totalSpent = userOrders.reduce((sum, o) => sum + Number(o.totalAmount), 0);
+@@ -83,15 +125,19 @@ export default function UserData() {
+                     </div>
+ 
+                     <div className="flex items-center gap-4">
+-                        <Link to="/admin/addFood" className="px-4 py-3 rounded-xl bg-zomato-red text-white text-sm font-semibold hover:bg-red-600 transition-colors">
+-                            + Add Menu Item
+-                        </Link>
+                         <button
+                             onClick={toggleDarkMode}
+                             className={`p-3 rounded-xl shadow-sm border transition-colors ${darkMode ? 'bg-gray-800 border-gray-700 text-yellow-400 hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                         >
+                             {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                         </button>
++                        <button
++                            onClick={handleLogout}
++                            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-zomato-red text-sm font-semibold hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border border-red-100 dark:border-red-900/40"
++                        >
++                            <LogOut className="w-4 h-4" />
++                            Logout
++                        </button>
+ 
+                         <div className={`px-5 py-3 rounded-xl shadow-sm border flex items-center gap-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                             <div className="flex items-center gap-3 border-r pr-4 border-gray-300/30">
+@@ -134,6 +180,12 @@ export default function UserData() {
+                             </span>
+                         )}
+                     </button>
++                    <button
++                        onClick={() => setTab('food')}
++                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${tab === 'food' ? 'bg-zomato-red text-white' : darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600 border border-gray-200'}`}
++                    >
++                        Food Items
++                    </button>
+                 </div>
+ 
+                 {tab === 'users' && (
+@@ -276,6 +328,75 @@ export default function UserData() {
+                     </div>
+                 </div>
+                 )}
++
++                {tab === 'food' && (
++                <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
++                    <div className="overflow-x-auto">
++                        <table className={`min-w-full divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
++                            <thead className={darkMode ? 'bg-gray-800/80' : 'bg-gray-50/80'}>
++                                <tr>
++                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Dish</th>
++                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Restaurant ID</th>
++                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category</th>
++                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Price</th>
++                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</th>
++                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}></th>
++                                </tr>
++                            </thead>
++                            <tbody className={`divide-y ${darkMode ? 'divide-gray-700 bg-gray-800' : 'divide-gray-100 bg-white'}`}>
++                                {foodItems.map((item) => (
++                                    <tr key={item.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-red-50/30'}>
++                                        <td className="px-6 py-4 whitespace-nowrap">
++                                            <div className="flex items-center gap-3">
++                                                <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center text-zomato-red shrink-0 border border-red-200">
++                                                    <Utensils className="w-4 h-4" />
++                                                </div>
++                                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</span>
++                                            </div>
++                                        </td>
++                                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>#{item.restrauntId}</td>
++                                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.category}</td>
++                                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>₹{item.price}</td>
++                                        <td className="px-6 py-4 whitespace-nowrap">
++                                            {item.isFlagged ? (
++                                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
++                                                    <Flag className="w-3.5 h-3.5" /> Flagged
++                                                </span>
++                                            ) : (
++                                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
++                                                    <CheckCircle className="w-3.5 h-3.5" /> Active
++                                                </span>
++                                            )}
++                                        </td>
++                                        <td className="px-6 py-4 whitespace-nowrap text-right">
++                                            <div className="flex items-center justify-end gap-2">
++                                                <button
++                                                    onClick={() => toggleFlagFood(item.id, !!item.isFlagged)}
++                                                    className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${item.isFlagged ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
++                                                >
++                                                    {item.isFlagged ? 'Unflag' : 'Flag'}
++                                                </button>
++                                                <button
++                                                    onClick={() => removeFood(item.id)}
++                                                    className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
++                                                >
++                                                    <Trash2 className="w-4 h-4" />
++                                                </button>
++                                            </div>
++                                        </td>
++                                    </tr>
++                                ))}
++                            </tbody>
++                        </table>
++
++                        {foodItems.length === 0 && (
++                            <div className="px-6 py-16 text-center">
++                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>No food items on the platform yet.</p>
++                            </div>
++                        )}
++                    </div>
++                </div>
++                )}
+             </div>
+         </div>
+     );
+diff --git a/project/src/App.tsx b/project/src/App.tsx
+index 4494660..2ca1545 100644
+--- a/project/src/App.tsx
++++ b/project/src/App.tsx
+@@ -16,7 +16,6 @@ import Signup from './pages/SignUp';
+ import ProtectRoutes from './ProtectRoutes';
+ import UserData from './Admin/UserData';
+ import OrderDetails from './pages/OrderDetails';
+-import AddFood from './Admin/AddFood';
+ import VendorLayout from './Vendor/VendorLayout';
+ import VendorSetup from './Vendor/VendorSetup';
+ import VendorDashboard from './Vendor/VendorDashboard';
+@@ -78,11 +77,6 @@ export default function App() {
+                   <UserData />
+                 </ProtectRoutes>
+               } />
+-              <Route path="/admin/addFood" element={
+-                <ProtectRoutes roles={['admin']}>
+-                  <AddFood />
+-                </ProtectRoutes>
+-              } />
+             </Routes>
+           </CartProvider>
+         </ToastProvider>
+-- 
+2.43.0
+

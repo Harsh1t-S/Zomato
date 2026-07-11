@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Users, Phone, Shield, Moon, Sun, ShoppingBag, IndianRupee, Store, CheckCircle, Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Users, Phone, Shield, Moon, Sun, ShoppingBag, IndianRupee, Store, CheckCircle, Clock, LogOut, Flag, Trash2, Utensils } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { apiJson } from '../lib/api';
 
 interface User {
@@ -24,23 +25,37 @@ interface Vendor {
     isApproved: boolean;
 }
 
+interface FoodItem {
+    id: number;
+    restrauntId: number | string;
+    name: string;
+    category: string;
+    price: number | string;
+    isFlagged?: boolean;
+}
+
 export default function UserData() {
     const [userData, setUserData] = useState<User[]>([]);
     const [ordersData, setOrdersData] = useState<Order[]>([]);
     const [vendors, setVendors] = useState<Vendor[]>([]);
-    const [tab, setTab] = useState<'users' | 'vendors'>('users');
+    const [foodItems, setFoodItems] = useState<FoodItem[]>([]);
+    const [tab, setTab] = useState<'users' | 'vendors' | 'food'>('users');
     const { darkMode, toggleDarkMode } = useTheme();
+    const { logout } = useAuth();
+    const navigate = useNavigate();
 
     const loadData = async () => {
         try {
-            const [users, orders, vendorList] = await Promise.all([
+            const [users, orders, vendorList, food] = await Promise.all([
                 apiJson<User[]>('/api/users/all'),
                 apiJson<Order[]>('/api/orders/all'),
                 apiJson<Vendor[]>('/api/vendors/all'),
+                apiJson<FoodItem[]>('/api/food'),
             ]);
             if (Array.isArray(users)) setUserData(users);
             if (Array.isArray(orders)) setOrdersData(orders);
             if (Array.isArray(vendorList)) setVendors(vendorList);
+            if (Array.isArray(food)) setFoodItems(food);
         } catch (error) {
             console.error(error);
         }
@@ -50,10 +65,37 @@ export default function UserData() {
         loadData();
     }, []);
 
+    const handleLogout = () => {
+        logout();
+        navigate('/login');
+    };
+
     const approveVendor = async (id: number) => {
         try {
             await apiJson(`/api/vendors/approve/${id}`, { method: 'PUT' });
             setVendors((prev) => prev.map((v) => (v.id === id ? { ...v, isApproved: true } : v)));
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const toggleFlagFood = async (id: number, current: boolean) => {
+        try {
+            const updated = await apiJson<FoodItem>(`/api/food/${id}/flag`, {
+                method: 'PATCH',
+                body: JSON.stringify({ isFlagged: !current }),
+            });
+            setFoodItems((prev) => prev.map((f) => (f.id === id ? { ...f, isFlagged: updated.isFlagged } : f)));
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const removeFood = async (id: number) => {
+        if (!confirm('Remove this food item from the platform?')) return;
+        try {
+            await apiJson(`/api/food/${id}`, { method: 'DELETE' });
+            setFoodItems((prev) => prev.filter((f) => f.id !== id));
         } catch (error) {
             console.error(error);
         }
@@ -83,14 +125,18 @@ export default function UserData() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <Link to="/admin/addFood" className="px-4 py-3 rounded-xl bg-zomato-red text-white text-sm font-semibold hover:bg-red-600 transition-colors">
-                            + Add Menu Item
-                        </Link>
                         <button
                             onClick={toggleDarkMode}
                             className={`p-3 rounded-xl shadow-sm border transition-colors ${darkMode ? 'bg-gray-800 border-gray-700 text-yellow-400 hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                         >
                             {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                        </button>
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 text-zomato-red text-sm font-semibold hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors border border-red-100 dark:border-red-900/40"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Logout
                         </button>
 
                         <div className={`px-5 py-3 rounded-xl shadow-sm border flex items-center gap-4 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
@@ -133,6 +179,12 @@ export default function UserData() {
                                 {pendingVendors}
                             </span>
                         )}
+                    </button>
+                    <button
+                        onClick={() => setTab('food')}
+                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-colors ${tab === 'food' ? 'bg-zomato-red text-white' : darkMode ? 'bg-gray-800 text-gray-300' : 'bg-white text-gray-600 border border-gray-200'}`}
+                    >
+                        Food Items
                     </button>
                 </div>
 
@@ -271,6 +323,75 @@ export default function UserData() {
                         {vendors.length === 0 && (
                             <div className="px-6 py-16 text-center">
                                 <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>No vendors have registered yet.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                )}
+
+                {tab === 'food' && (
+                <div className={`rounded-2xl shadow-sm border overflow-hidden transition-colors ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+                    <div className="overflow-x-auto">
+                        <table className={`min-w-full divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
+                            <thead className={darkMode ? 'bg-gray-800/80' : 'bg-gray-50/80'}>
+                                <tr>
+                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Dish</th>
+                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Restaurant ID</th>
+                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category</th>
+                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Price</th>
+                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status</th>
+                                    <th className={`px-6 py-5 text-left text-xs font-bold uppercase tracking-wider ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}></th>
+                                </tr>
+                            </thead>
+                            <tbody className={`divide-y ${darkMode ? 'divide-gray-700 bg-gray-800' : 'divide-gray-100 bg-white'}`}>
+                                {foodItems.map((item) => (
+                                    <tr key={item.id} className={darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-red-50/30'}>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <div className="flex items-center gap-3">
+                                                <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center text-zomato-red shrink-0 border border-red-200">
+                                                    <Utensils className="w-4 h-4" />
+                                                </div>
+                                                <span className={`text-sm font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{item.name}</span>
+                                            </div>
+                                        </td>
+                                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>#{item.restrauntId}</td>
+                                        <td className={`px-6 py-4 whitespace-nowrap text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{item.category}</td>
+                                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-900'}`}>₹{item.price}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {item.isFlagged ? (
+                                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">
+                                                    <Flag className="w-3.5 h-3.5" /> Flagged
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700">
+                                                    <CheckCircle className="w-3.5 h-3.5" /> Active
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => toggleFlagFood(item.id, !!item.isFlagged)}
+                                                    className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-colors ${item.isFlagged ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
+                                                >
+                                                    {item.isFlagged ? 'Unflag' : 'Flag'}
+                                                </button>
+                                                <button
+                                                    onClick={() => removeFood(item.id)}
+                                                    className="p-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+
+                        {foodItems.length === 0 && (
+                            <div className="px-6 py-16 text-center">
+                                <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>No food items on the platform yet.</p>
                             </div>
                         )}
                     </div>

@@ -31,6 +31,11 @@ const Food = db.define('Food', {
         allowNull: false,
         defaultValue: false,
     },
+    isFlagged: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+    },
 
 });
 

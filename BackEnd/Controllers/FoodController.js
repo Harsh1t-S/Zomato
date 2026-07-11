@@ -66,6 +66,8 @@ const deleteFood = async (req, res) => {
             return res.status(404).json({ error: 'Food item not found' });
         }
 
+        // Vendors may only delete items on their own restaurant. Admins may
+        // remove any item (moderation), so no ownership check for them.
         if (req.auth.role === 'vendor') {
             const restaurant = await Restraunt.findByPk(food.restrauntId);
             if (!restaurant || String(restaurant.vendorId) !== String(req.auth.id)) {
@@ -80,9 +82,29 @@ const deleteFood = async (req, res) => {
     }
 };
 
+// Admin-only: flag or unflag a food item for moderation, instead of editing
+// or removing it outright. If `isFlagged` isn't provided in the body, the
+// current value is toggled.
+const flagFood = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const food = await Food.findByPk(id);
+        if (!food) {
+            return res.status(404).json({ error: 'Food item not found' });
+        }
+
+        const isFlagged = typeof req.body.isFlagged === 'boolean' ? req.body.isFlagged : !food.isFlagged;
+        await food.update({ isFlagged });
+        res.json(food);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     getAllFood,
     addFood,
     updateFood,
     deleteFood,
+    flagFood,
 };

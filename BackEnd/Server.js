@@ -30,7 +30,13 @@ app.get('/', (req, res) => {
 db.authenticate()
     .then(() => {
         console.log('Database connected...');
-        return db.sync();
+        // { alter: true } makes Sequelize diff each model against the live table
+        // and add/modify columns to match (e.g. `vendorId` on restaurants,
+        // `isFlagged` on food) instead of silently no-op'ing on tables that
+        // already exist. Without this, new columns added to a model never
+        // reach an already-deployed database and every query touching them
+        // fails with "Unknown column '...' in field list".
+        return db.sync({ alter: true });
     })
     .then(() => {
         console.log('Database synchronized.');

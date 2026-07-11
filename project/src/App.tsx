@@ -16,7 +16,6 @@ import Signup from './pages/SignUp';
 import ProtectRoutes from './ProtectRoutes';
 import UserData from './Admin/UserData';
 import OrderDetails from './pages/OrderDetails';
-import AddFood from './Admin/AddFood';
 import VendorLayout from './Vendor/VendorLayout';
 import VendorSetup from './Vendor/VendorSetup';
 import VendorDashboard from './Vendor/VendorDashboard';
@@ -76,11 +75,6 @@ export default function App() {
               <Route path="/admin" element={
                 <ProtectRoutes roles={['admin']}>
                   <UserData />
-                </ProtectRoutes>
-              } />
-              <Route path="/admin/addFood" element={
-                <ProtectRoutes roles={['admin']}>
-                  <AddFood />
                 </ProtectRoutes>
               } />
             </Routes>

@@ -20,7 +20,9 @@ const IMG = {
 
 const seedDatabase = async () => {
     try {
-        await db.sync();
+        // Keep this in sync with Server.js — alter existing tables to match
+        // the current models rather than silently skipping missing columns.
+        await db.sync({ alter: true });
 
         const count = await Restaurant.count();
         if (count > 0) {
