@@ -9,6 +9,7 @@ const RestrauntRoutes = require('./Routes/RestrauntRoutes');
 const FoodRoutes = require('./Routes/FoodRoutes');
 const VendorRoutes = require('./Routes/VendorRoutes');
 const AdminRoutes = require('./Routes/AdminRoutes');
+const PaymentRoutes = require('./Routes/PaymentRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 8000;
@@ -22,6 +23,7 @@ app.use('/api/restraunt/', RestrauntRoutes);
 app.use('/api/food', FoodRoutes);
 app.use('/api/vendors', VendorRoutes);
 app.use('/api/admin', AdminRoutes);
+app.use('/api/payments', PaymentRoutes);
 
 app.get('/', (req, res) => {
     res.send('Server is running and database is connected.');

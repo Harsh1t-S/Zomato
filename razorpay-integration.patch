@@ -1,0 +1,738 @@
+From 1935cff067fe573deebf5c65360513c0279359f9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 11 Jul 2026 08:28:53 +0000
+Subject: [PATCH] Add Razorpay test-mode payment gateway to checkout
+
+- New BackEnd/Controllers/PaymentController.js: creates a Razorpay order for
+  the cart total (POST /api/payments/create-order) and independently
+  verifies the HMAC-SHA256 payment signature Razorpay returns after
+  checkout (POST /api/payments/verify, plus re-verified server-side in
+  OrderController before any order is persisted - never trusts a
+  client-supplied 'paid' flag on its own).
+- BackEnd/Models/OrderModel.js: added paymentStatus ('cod'|'paid'|'failed'),
+  paymentId, razorpayOrderId columns.
+- BackEnd/Controllers/OrderController.js: when RAZORPAY_ENABLED=true,
+  createOrder now requires and re-verifies a valid Razorpay signature
+  before writing the order; falls back to the old COD behavior unchanged
+  if the gateway is disabled/unset, so nothing breaks if env vars aren't
+  configured yet.
+- BackEnd/Routes/PaymentRoutes.js + Server.js: mounted at /api/payments,
+  requireAuth + requireRole('user').
+- BackEnd/package.json: added razorpay SDK dependency.
+- BackEnd/.env.example: documented the 4 required env vars
+  (RAZORPAY_KEY_ID/KEY_SECRET/MODE/ENABLED).
+- project/src/lib/razorpay.ts: loads checkout.js on demand, wraps Razorpay
+  Checkout in a promise-based openRazorpayCheckout() helper.
+- project/src/pages/Cart.tsx: checkout flow is now create Razorpay order ->
+  open Checkout -> place order with the payment proof attached. Button
+  reads 'Pay & Place Order' and shows payment/placing stages while busy.
+
+Verified: tsc --noEmit clean, vite build succeeds, backend files
+node --check clean, and the signature-verification logic round-tripped
+against a locally-computed HMAC using the real test key secret (accepts
+valid signatures, rejects tampered/missing ones).
+---
+ BackEnd/.env.example                     |   8 ++
+ BackEnd/Controllers/OrderController.js   |  32 ++++-
+ BackEnd/Controllers/PaymentController.js |  92 ++++++++++++
+ BackEnd/Models/OrderModel.js             |  18 ++-
+ BackEnd/Routes/PaymentRoutes.js          |   9 ++
+ BackEnd/Server.js                        |   2 +
+ BackEnd/package-lock.json                | 170 +++++++++++++++++++++++
+ BackEnd/package.json                     |   1 +
+ project/src/lib/razorpay.ts              | 101 ++++++++++++++
+ project/src/pages/Cart.tsx               |  37 ++++-
+ 10 files changed, 464 insertions(+), 6 deletions(-)
+ create mode 100644 BackEnd/Controllers/PaymentController.js
+ create mode 100644 BackEnd/Routes/PaymentRoutes.js
+ create mode 100644 project/src/lib/razorpay.ts
+
+diff --git a/BackEnd/.env.example b/BackEnd/.env.example
+index 2793c72..062afbf 100644
+--- a/BackEnd/.env.example
++++ b/BackEnd/.env.example
+@@ -3,3 +3,11 @@ JWT_SECRET=replace_with_a_long_random_string
+ PORT=8000
+ ADMIN_USERNAME=admin
+ ADMIN_PASSWORD=replace_with_a_strong_password
++
++# Razorpay (test mode). Get test keys from the Razorpay Dashboard > Settings
++# > API Keys. Leave RAZORPAY_ENABLED=false (or unset) to fall back to
++# cash-on-delivery order creation with no payment step.
++RAZORPAY_KEY_ID=rzp_test_xxxxxxxxxxxx
++RAZORPAY_KEY_SECRET=replace_with_your_test_key_secret
++RAZORPAY_MODE=test
++RAZORPAY_ENABLED=false
+diff --git a/BackEnd/Controllers/OrderController.js b/BackEnd/Controllers/OrderController.js
+index 58aa535..8644f97 100644
+--- a/BackEnd/Controllers/OrderController.js
++++ b/BackEnd/Controllers/OrderController.js
+@@ -1,9 +1,34 @@
+ const Orders = require('../Models/OrderModel');
+ const Restraunt = require('../Models/RestrauntModel');
++const { verifyRazorpaySignature, paymentsEnabled } = require('./PaymentController');
+ 
+ const createOrder = async (req, res) => {
+     try {
+-        const { Orderid, number, totalAmount, restrauntName, restrauntId, orderedItems, ItemPrices } = req.body;
++        const {
++            Orderid, number, totalAmount, restrauntName, restrauntId, orderedItems, ItemPrices,
++            razorpay_order_id, razorpay_payment_id, razorpay_signature,
++        } = req.body;
++
++        // If the payment gateway is turned on, a valid, independently-verified
++        // Razorpay payment is required before an order is ever written to the
++        // DB — we don't trust a client-supplied "it's paid" flag, we re-check
++        // the signature ourselves with our own key secret. If the gateway is
++        // off (RAZORPAY_ENABLED != 'true'), orders keep working as COD, same
++        // as before this feature existed.
++        let paymentStatus = 'cod';
++        let paymentId = null;
++        let verifiedRazorpayOrderId = null;
++
++        if (paymentsEnabled()) {
++            const valid = verifyRazorpaySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
++            if (!valid) {
++                return res.status(402).json({ error: 'Payment verification failed. Order was not placed.' });
++            }
++            paymentStatus = 'paid';
++            paymentId = razorpay_payment_id;
++            verifiedRazorpayOrderId = razorpay_order_id;
++        }
++
+         const order = await Orders.create({
+             Orderid,
+             number,
+@@ -12,7 +37,10 @@ const createOrder = async (req, res) => {
+             restrauntId,
+             orderedItems,
+             ItemPrices,
+-            status: 'placed'
++            status: 'placed',
++            paymentStatus,
++            paymentId,
++            razorpayOrderId: verifiedRazorpayOrderId,
+         });
+         res.status(201).json(order);
+     } catch (error) {
+diff --git a/BackEnd/Controllers/PaymentController.js b/BackEnd/Controllers/PaymentController.js
+new file mode 100644
+index 0000000..969773e
+--- /dev/null
++++ b/BackEnd/Controllers/PaymentController.js
+@@ -0,0 +1,92 @@
++const Razorpay = require('razorpay');
++const crypto = require('crypto');
++
++const paymentsEnabled = () =>
++    process.env.RAZORPAY_ENABLED === 'true' &&
++    !!process.env.RAZORPAY_KEY_ID &&
++    !!process.env.RAZORPAY_KEY_SECRET;
++
++const getClient = () =>
++    new Razorpay({
++        key_id: process.env.RAZORPAY_KEY_ID,
++        key_secret: process.env.RAZORPAY_KEY_SECRET,
++    });
++
++// Verifies the HMAC-SHA256 signature Razorpay returns after a successful
++// checkout, using our key secret. This is the only trustworthy way to know
++// a payment actually went through — never trust a client-supplied "paid"
++// status on its own. Exported so OrderController can re-run the same check
++// before persisting an order (defense in depth: a client could otherwise
++// call /api/orders directly with a made-up paymentId).
++const verifyRazorpaySignature = (orderId, paymentId, signature) => {
++    if (!orderId || !paymentId || !signature) return false;
++    const expected = crypto
++        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
++        .update(`${orderId}|${paymentId}`)
++        .digest('hex');
++    // Constant-time comparison to avoid leaking signature bytes via timing.
++    const expectedBuf = Buffer.from(expected, 'hex');
++    const givenBuf = Buffer.from(String(signature), 'hex');
++    if (expectedBuf.length !== givenBuf.length) return false;
++    return crypto.timingSafeEqual(expectedBuf, givenBuf);
++};
++
++// Creates a Razorpay order for the given rupee amount so the frontend can
++// open Razorpay Checkout against it. Amount is taken from the server side
++// of the cart total that's passed in, converted to paise (Razorpay's unit).
++const createRazorpayOrder = async (req, res) => {
++    try {
++        if (!paymentsEnabled()) {
++            return res.status(503).json({ error: 'Payments are not enabled on this server.' });
++        }
++
++        const amountRupees = Number(req.body?.amount);
++        if (!amountRupees || amountRupees <= 0) {
++            return res.status(400).json({ error: 'A valid amount is required.' });
++        }
++
++        const razorpay = getClient();
++        const order = await razorpay.orders.create({
++            amount: Math.round(amountRupees * 100), // paise
++            currency: 'INR',
++            receipt: `rcpt_${Date.now()}`,
++            notes: { userId: String(req.auth.id) },
++        });
++
++        res.status(201).json({
++            orderId: order.id,
++            amount: order.amount,
++            currency: order.currency,
++            keyId: process.env.RAZORPAY_KEY_ID,
++        });
++    } catch (error) {
++        console.error('Razorpay order creation failed:', error);
++        res.status(500).json({ error: 'Failed to create payment order.' });
++    }
++};
++
++// Optional pre-check the frontend can call right after Razorpay Checkout
++// succeeds, purely for UI feedback ("Verifying payment...") before it goes
++// on to actually place the order. OrderController.createOrder re-verifies
++// independently, so this endpoint isn't a security boundary by itself.
++const verifyPayment = async (req, res) => {
++    try {
++        if (!paymentsEnabled()) {
++            return res.status(503).json({ error: 'Payments are not enabled on this server.' });
++        }
++
++        const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
++        const valid = verifyRazorpaySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
++
++        if (!valid) {
++            return res.status(400).json({ verified: false, error: 'Payment signature verification failed.' });
++        }
++
++        res.json({ verified: true, paymentId: razorpay_payment_id, orderId: razorpay_order_id });
++    } catch (error) {
++        console.error('Payment verification failed:', error);
++        res.status(500).json({ error: 'Payment verification failed.' });
++    }
++};
++
++module.exports = { createRazorpayOrder, verifyPayment, verifyRazorpaySignature, paymentsEnabled };
+diff --git a/BackEnd/Models/OrderModel.js b/BackEnd/Models/OrderModel.js
+index 52312c3..7efde97 100644
+--- a/BackEnd/Models/OrderModel.js
++++ b/BackEnd/Models/OrderModel.js
+@@ -35,7 +35,23 @@ const Orders = db.define('orders', {
+         type: DataTypes.ENUM('placed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'),
+         allowNull: false,
+         defaultValue: 'placed'
+-    }
++    },
++    // Payment tracking (Razorpay). 'cod' covers orders placed while the
++    // payment gateway is disabled (RAZORPAY_ENABLED != 'true'), so existing
++    // behavior keeps working if it's ever turned off.
++    paymentStatus: {
++        type: DataTypes.ENUM('cod', 'paid', 'failed'),
++        allowNull: false,
++        defaultValue: 'cod',
++    },
++    paymentId: {
++        type: DataTypes.STRING,
++        allowNull: true,
++    },
++    razorpayOrderId: {
++        type: DataTypes.STRING,
++        allowNull: true,
++    },
+ }, {
+     timestamps: true,
+ });
+diff --git a/BackEnd/Routes/PaymentRoutes.js b/BackEnd/Routes/PaymentRoutes.js
+new file mode 100644
+index 0000000..efce89f
+--- /dev/null
++++ b/BackEnd/Routes/PaymentRoutes.js
+@@ -0,0 +1,9 @@
++const express = require('express');
++const router = express.Router();
++const { createRazorpayOrder, verifyPayment } = require('../Controllers/PaymentController');
++const { requireAuth, requireRole } = require('../Middleware/auth');
++
++router.post('/create-order', requireAuth, requireRole('user'), createRazorpayOrder);
++router.post('/verify', requireAuth, requireRole('user'), verifyPayment);
++
++module.exports = router;
+diff --git a/BackEnd/Server.js b/BackEnd/Server.js
+index 4ff15a6..b666242 100644
+--- a/BackEnd/Server.js
++++ b/BackEnd/Server.js
+@@ -9,6 +9,7 @@ const RestrauntRoutes = require('./Routes/RestrauntRoutes');
+ const FoodRoutes = require('./Routes/FoodRoutes');
+ const VendorRoutes = require('./Routes/VendorRoutes');
+ const AdminRoutes = require('./Routes/AdminRoutes');
++const PaymentRoutes = require('./Routes/PaymentRoutes');
+ 
+ const app = express();
+ const PORT = process.env.PORT || 8000;
+@@ -22,6 +23,7 @@ app.use('/api/restraunt/', RestrauntRoutes);
+ app.use('/api/food', FoodRoutes);
+ app.use('/api/vendors', VendorRoutes);
+ app.use('/api/admin', AdminRoutes);
++app.use('/api/payments', PaymentRoutes);
+ 
+ app.get('/', (req, res) => {
+     res.send('Server is running and database is connected.');
+diff --git a/BackEnd/package-lock.json b/BackEnd/package-lock.json
+index 3306476..28dbc62 100644
+--- a/BackEnd/package-lock.json
++++ b/BackEnd/package-lock.json
+@@ -16,6 +16,7 @@
+         "express-rate-limit": "^8.5.2",
+         "jsonwebtoken": "^9.0.3",
+         "mysql2": "^3.22.6",
++        "razorpay": "^2.9.6",
+         "sequelize": "^6.37.8"
+       }
+     },
+@@ -62,6 +63,24 @@
+         "node": ">= 0.6"
+       }
+     },
++    "node_modules/agent-base": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-6.0.2.tgz",
++      "integrity": "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==",
++      "license": "MIT",
++      "dependencies": {
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 6.0.0"
++      }
++    },
++    "node_modules/asynckit": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz",
++      "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==",
++      "license": "MIT"
++    },
+     "node_modules/aws-ssl-profiles": {
+       "version": "1.1.2",
+       "resolved": "https://registry.npmjs.org/aws-ssl-profiles/-/aws-ssl-profiles-1.1.2.tgz",
+@@ -71,6 +90,18 @@
+         "node": ">= 6.0.0"
+       }
+     },
++    "node_modules/axios": {
++      "version": "1.18.1",
++      "resolved": "https://registry.npmjs.org/axios/-/axios-1.18.1.tgz",
++      "integrity": "sha512-3nTvFlvpn9Zu/RkHUqtc7/+al4UpRW5az71ap5zccp6e8RAYEzhMTecX8Dz1wWDYrPpUoB1HAQEGEAEvUr7S9g==",
++      "license": "MIT",
++      "dependencies": {
++        "follow-redirects": "^1.16.0",
++        "form-data": "^4.0.5",
++        "https-proxy-agent": "^5.0.1",
++        "proxy-from-env": "^2.1.0"
++      }
++    },
+     "node_modules/bcryptjs": {
+       "version": "3.0.3",
+       "resolved": "https://registry.npmjs.org/bcryptjs/-/bcryptjs-3.0.3.tgz",
+@@ -161,6 +192,18 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/combined-stream": {
++      "version": "1.0.8",
++      "resolved": "https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz",
++      "integrity": "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==",
++      "license": "MIT",
++      "dependencies": {
++        "delayed-stream": "~1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
+     "node_modules/content-disposition": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/content-disposition/-/content-disposition-1.1.0.tgz",
+@@ -235,6 +278,15 @@
+         }
+       }
+     },
++    "node_modules/delayed-stream": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/delayed-stream/-/delayed-stream-1.0.0.tgz",
++      "integrity": "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.4.0"
++      }
++    },
+     "node_modules/denque": {
+       "version": "2.1.0",
+       "resolved": "https://registry.npmjs.org/denque/-/denque-2.1.0.tgz",
+@@ -340,6 +392,21 @@
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/es-set-tostringtag": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/es-set-tostringtag/-/es-set-tostringtag-2.1.0.tgz",
++      "integrity": "sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "get-intrinsic": "^1.2.6",
++        "has-tostringtag": "^1.0.2",
++        "hasown": "^2.0.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
+     "node_modules/escape-html": {
+       "version": "1.0.3",
+       "resolved": "https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz",
+@@ -437,6 +504,63 @@
+         "url": "https://opencollective.com/express"
+       }
+     },
++    "node_modules/follow-redirects": {
++      "version": "1.16.0",
++      "resolved": "https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.16.0.tgz",
++      "integrity": "sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==",
++      "funding": [
++        {
++          "type": "individual",
++          "url": "https://github.com/sponsors/RubenVerborgh"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=4.0"
++      },
++      "peerDependenciesMeta": {
++        "debug": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/form-data": {
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/form-data/-/form-data-4.0.6.tgz",
++      "integrity": "sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==",
++      "license": "MIT",
++      "dependencies": {
++        "asynckit": "^0.4.0",
++        "combined-stream": "^1.0.8",
++        "es-set-tostringtag": "^2.1.0",
++        "hasown": "^2.0.4",
++        "mime-types": "^2.1.35"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/form-data/node_modules/mime-db": {
++      "version": "1.52.0",
++      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
++      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/form-data/node_modules/mime-types": {
++      "version": "2.1.35",
++      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
++      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
++      "license": "MIT",
++      "dependencies": {
++        "mime-db": "1.52.0"
++      },
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
+     "node_modules/forwarded": {
+       "version": "0.2.0",
+       "resolved": "https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz",
+@@ -534,6 +658,21 @@
+         "url": "https://github.com/sponsors/ljharb"
+       }
+     },
++    "node_modules/has-tostringtag": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/has-tostringtag/-/has-tostringtag-1.0.2.tgz",
++      "integrity": "sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==",
++      "license": "MIT",
++      "dependencies": {
++        "has-symbols": "^1.0.3"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
+     "node_modules/hasown": {
+       "version": "2.0.4",
+       "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz",
+@@ -566,6 +705,19 @@
+         "url": "https://opencollective.com/express"
+       }
+     },
++    "node_modules/https-proxy-agent": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz",
++      "integrity": "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==",
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "6",
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
+     "node_modules/iconv-lite": {
+       "version": "0.7.3",
+       "resolved": "https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.3.tgz",
+@@ -944,6 +1096,15 @@
+         "node": ">= 0.10"
+       }
+     },
++    "node_modules/proxy-from-env": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-2.1.0.tgz",
++      "integrity": "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
++    },
+     "node_modules/qs": {
+       "version": "6.15.3",
+       "resolved": "https://registry.npmjs.org/qs/-/qs-6.15.3.tgz",
+@@ -988,6 +1149,15 @@
+         "node": ">= 0.10"
+       }
+     },
++    "node_modules/razorpay": {
++      "version": "2.9.6",
++      "resolved": "https://registry.npmjs.org/razorpay/-/razorpay-2.9.6.tgz",
++      "integrity": "sha512-zsHAQzd6e1Cc6BNoCNZQaf65ElL6O6yw0wulxmoG5VQDr363fZC90Mp1V5EktVzG45yPyNomNXWlf4cQ3622gQ==",
++      "license": "MIT",
++      "dependencies": {
++        "axios": "^1.6.8"
++      }
++    },
+     "node_modules/retry-as-promised": {
+       "version": "7.1.1",
+       "resolved": "https://registry.npmjs.org/retry-as-promised/-/retry-as-promised-7.1.1.tgz",
+diff --git a/BackEnd/package.json b/BackEnd/package.json
+index a2b4f99..3396350 100644
+--- a/BackEnd/package.json
++++ b/BackEnd/package.json
+@@ -18,6 +18,7 @@
+     "express-rate-limit": "^8.5.2",
+     "jsonwebtoken": "^9.0.3",
+     "mysql2": "^3.22.6",
++    "razorpay": "^2.9.6",
+     "sequelize": "^6.37.8"
+   }
+ }
+diff --git a/project/src/lib/razorpay.ts b/project/src/lib/razorpay.ts
+new file mode 100644
+index 0000000..b78ca0f
+--- /dev/null
++++ b/project/src/lib/razorpay.ts
+@@ -0,0 +1,101 @@
++// Minimal loader + type shims for Razorpay Checkout. Razorpay doesn't ship
++// official TS types for the browser SDK, so we declare just the shape this
++// app actually uses rather than pulling in an unofficial @types package.
++
++export interface RazorpayOrderResponse {
++  orderId: string;
++  amount: number;
++  currency: string;
++  keyId: string;
++}
++
++export interface RazorpaySuccessResponse {
++  razorpay_order_id: string;
++  razorpay_payment_id: string;
++  razorpay_signature: string;
++}
++
++interface RazorpayFailureResponse {
++  error?: { description?: string };
++}
++
++interface RazorpayOptions {
++  key: string;
++  amount: number;
++  currency: string;
++  name: string;
++  description?: string;
++  order_id: string;
++  prefill?: { name?: string; contact?: string; email?: string };
++  theme?: { color?: string };
++  handler: (response: RazorpaySuccessResponse) => void;
++  modal?: { ondismiss?: () => void };
++}
++
++interface RazorpayInstance {
++  open: () => void;
++  on: (event: 'payment.failed', handler: (response: RazorpayFailureResponse) => void) => void;
++}
++
++declare global {
++  interface Window {
++    Razorpay?: new (options: RazorpayOptions) => RazorpayInstance;
++  }
++}
++
++const CHECKOUT_SRC = 'https://checkout.razorpay.com/v1/checkout.js';
++
++let loadPromise: Promise<boolean> | null = null;
++
++export function loadRazorpayScript(): Promise<boolean> {
++  if (window.Razorpay) return Promise.resolve(true);
++  if (loadPromise) return loadPromise;
++
++  loadPromise = new Promise((resolve) => {
++    const script = document.createElement('script');
++    script.src = CHECKOUT_SRC;
++    script.onload = () => resolve(true);
++    script.onerror = () => {
++      loadPromise = null;
++      resolve(false);
++    };
++    document.body.appendChild(script);
++  });
++
++  return loadPromise;
++}
++
++// Opens Razorpay Checkout for an already-created order and resolves with the
++// success payload, or rejects if the user cancels or the payment fails.
++export function openRazorpayCheckout(
++  order: RazorpayOrderResponse,
++  opts: { name: string; description?: string; contact?: string }
++): Promise<RazorpaySuccessResponse> {
++  return new Promise((resolve, reject) => {
++    if (!window.Razorpay) {
++      reject(new Error('Payment gateway failed to load.'));
++      return;
++    }
++
++    const rzp = new window.Razorpay({
++      key: order.keyId,
++      amount: order.amount,
++      currency: order.currency,
++      name: opts.name,
++      description: opts.description,
++      order_id: order.orderId,
++      prefill: opts.contact ? { contact: opts.contact } : undefined,
++      theme: { color: '#E23744' },
++      handler: (response) => resolve(response),
++      modal: {
++        ondismiss: () => reject(new Error('Payment cancelled.')),
++      },
++    });
++
++    rzp.on('payment.failed', (resp) => {
++      reject(new Error(resp.error?.description || 'Payment failed. Please try again.'));
++    });
++
++    rzp.open();
++  });
++}
+diff --git a/project/src/pages/Cart.tsx b/project/src/pages/Cart.tsx
+index f0a452f..9d9c11e 100644
+--- a/project/src/pages/Cart.tsx
++++ b/project/src/pages/Cart.tsx
+@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
+ import { useAuth } from '../context/AuthContext';
+ import { useToast } from '../context/ToastContext';
+ import { apiJson } from '../lib/api';
++import { loadRazorpayScript, openRazorpayCheckout, type RazorpayOrderResponse } from '../lib/razorpay';
+ 
+ export default function Cart() {
+   const { items, updateQuantity, removeItem, clearCart, totalPrice, totalItems } = useCart();
+@@ -16,6 +17,7 @@ export default function Cart() {
+   const [appliedPromo, setAppliedPromo] = useState(false);
+   const [orderPlaced, setOrderPlaced] = useState(false);
+   const [isPlacing, setIsPlacing] = useState(false);
++  const [placingStage, setPlacingStage] = useState<'payment' | 'placing' | null>(null);
+   const [copied, setCopied] = useState(false);
+   const [finalOrder, setFinalOrder] = useState({ id: '', total: 0, items: 0 });
+ 
+@@ -40,6 +42,29 @@ export default function Cart() {
+     const newOrderId = Date.now().toString().slice(-6);
+ 
+     try {
++      // 1. Ask our backend to open a Razorpay order for this cart total.
++      setPlacingStage('payment');
++      const scriptLoaded = await loadRazorpayScript();
++      if (!scriptLoaded) {
++        throw new Error('Unable to load payment gateway. Check your connection and try again.');
++      }
++
++      const paymentOrder = await apiJson<RazorpayOrderResponse>('/api/payments/create-order', {
++        method: 'POST',
++        body: JSON.stringify({ amount: grandTotal }),
++      });
++
++      // 2. Open Razorpay Checkout and wait for the user to complete payment.
++      const payment = await openRazorpayCheckout(paymentOrder, {
++        name: 'Zomato',
++        description: items[0]?.restaurantName ? `Order from ${items[0].restaurantName}` : 'Food order',
++        contact: user.number,
++      });
++
++      // 3. Only now place the actual order, passing along the payment proof.
++      // The backend independently re-verifies the signature before saving —
++      // this call succeeding server-side is what actually marks it paid.
++      setPlacingStage('placing');
+       await apiJson('/api/orders', {
+         method: 'POST',
+         body: JSON.stringify({
+@@ -49,7 +74,10 @@ export default function Cart() {
+           restrauntName: items[0]?.restaurantName || 'Zomato Restaurant',
+           restrauntId: items[0]?.restaurantId,
+           orderedItems: items.map(ci => ({ name: ci.item.name, quantity: ci.quantity })),
+-          ItemPrices: items.map(ci => ({ name: ci.item.name, price: ci.item.price * ci.quantity }))
++          ItemPrices: items.map(ci => ({ name: ci.item.name, price: ci.item.price * ci.quantity })),
++          razorpay_order_id: payment.razorpay_order_id,
++          razorpay_payment_id: payment.razorpay_payment_id,
++          razorpay_signature: payment.razorpay_signature,
+         }),
+       });
+ 
+@@ -60,6 +88,7 @@ export default function Cart() {
+       showToast(error.message || 'Failed to place order. Please try again.', 'error');
+     } finally {
+       setIsPlacing(false);
++      setPlacingStage(null);
+     }
+   };
+ 
+@@ -262,11 +291,13 @@ export default function Cart() {
+                 className="w-full mt-6 bg-zomato-red text-white font-bold py-3.5 rounded-xl hover:bg-zomato-red-dark transition-colors flex items-center justify-center gap-2 disabled:opacity-75"
+               >
+                 {isPlacing ? (
+-                  <span className="animate-pulse">Placing Order...</span>
++                  <span className="animate-pulse">
++                    {placingStage === 'payment' ? 'Waiting for payment...' : 'Placing order...'}
++                  </span>
+                 ) : (
+                   <>
+                     <IndianRupee className="w-5 h-5" />
+-                    Place Order · ₹{grandTotal}
++                    Pay & Place Order · ₹{grandTotal}
+                   </>
+                 )}
+               </button>
+-- 
+2.43.0
+

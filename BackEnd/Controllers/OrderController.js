@@ -1,9 +1,34 @@
 const Orders = require('../Models/OrderModel');
 const Restraunt = require('../Models/RestrauntModel');
+const { verifyRazorpaySignature, paymentsEnabled } = require('./PaymentController');
 
 const createOrder = async (req, res) => {
     try {
-        const { Orderid, number, totalAmount, restrauntName, restrauntId, orderedItems, ItemPrices } = req.body;
+        const {
+            Orderid, number, totalAmount, restrauntName, restrauntId, orderedItems, ItemPrices,
+            razorpay_order_id, razorpay_payment_id, razorpay_signature,
+        } = req.body;
+
+        // If the payment gateway is turned on, a valid, independently-verified
+        // Razorpay payment is required before an order is ever written to the
+        // DB — we don't trust a client-supplied "it's paid" flag, we re-check
+        // the signature ourselves with our own key secret. If the gateway is
+        // off (RAZORPAY_ENABLED != 'true'), orders keep working as COD, same
+        // as before this feature existed.
+        let paymentStatus = 'cod';
+        let paymentId = null;
+        let verifiedRazorpayOrderId = null;
+
+        if (paymentsEnabled()) {
+            const valid = verifyRazorpaySignature(razorpay_order_id, razorpay_payment_id, razorpay_signature);
+            if (!valid) {
+                return res.status(402).json({ error: 'Payment verification failed. Order was not placed.' });
+            }
+            paymentStatus = 'paid';
+            paymentId = razorpay_payment_id;
+            verifiedRazorpayOrderId = razorpay_order_id;
+        }
+
         const order = await Orders.create({
             Orderid,
             number,
@@ -12,7 +37,10 @@ const createOrder = async (req, res) => {
             restrauntId,
             orderedItems,
             ItemPrices,
-            status: 'placed'
+            status: 'placed',
+            paymentStatus,
+            paymentId,
+            razorpayOrderId: verifiedRazorpayOrderId,
         });
         res.status(201).json(order);
     } catch (error) {
