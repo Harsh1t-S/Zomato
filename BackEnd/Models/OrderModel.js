@@ -19,6 +19,10 @@ const Orders = db.define('orders', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    restrauntId: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     orderedItems: {
         type: DataTypes.JSON,
         allowNull: false

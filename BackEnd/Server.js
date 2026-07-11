@@ -3,9 +3,12 @@ const express = require('express');
 const db = require('./Config/db');
 
 const UserRoutes = require('./Routes/UserRoutes');
-const OrderRoutes = require('./Routes/OrderRoutes')
-const RestrauntRoutes = require('./Routes/RestrauntRoutes')
-const FoodRoutes = require('./Routes/FoodRoutes')
+const OrderRoutes = require('./Routes/OrderRoutes');
+const RestrauntRoutes = require('./Routes/RestrauntRoutes');
+const FoodRoutes = require('./Routes/FoodRoutes');
+const VendorRoutes = require('./Routes/VendorRoutes');
+
+const VendorModel = require('./Models/VendorModel');
 
 const app = express();
 const PORT = 8000;
@@ -15,8 +18,9 @@ app.use(express.json());
 
 app.use('/api/users', UserRoutes);
 app.use('/api/orders/', OrderRoutes);
-app.use('/api/restraunt/', RestrauntRoutes)
+app.use('/api/restraunt/', RestrauntRoutes);
 app.use('/api/food', FoodRoutes);
+app.use('/api/vendors', VendorRoutes);
 
 app.get('/', (req, res) => {
     res.send('Server is running and database is connected.');

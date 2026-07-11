@@ -1,16 +1,15 @@
 const db = require('../Config/db.js');
 const { DataTypes } = require('sequelize');
 
-const User = db.define('User', {
+const Vendor = db.define('Vendor', {
     id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
     },
-    name: {
+    ownerName: {
         type: DataTypes.STRING,
         allowNull: false,
-        unique: false,
     },
     number: {
         type: DataTypes.STRING,
@@ -21,8 +20,20 @@ const User = db.define('User', {
         type: DataTypes.STRING,
         allowNull: false,
     },
+    businessName: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    gstNumber: {
+        type: DataTypes.STRING,
+        allowNull: true,
+    },
+    isApproved: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    }
 }, {
     timestamps: true,
 });
 
-module.exports = User;
+module.exports = Vendor;

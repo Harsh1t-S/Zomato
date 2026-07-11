@@ -66,6 +66,10 @@ const Restaurant = db.define('restaurants', {
     },
     features: {
         type: DataTypes.JSON,
+    },
+    vendorId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
     }
 }, {
     timestamps: true,

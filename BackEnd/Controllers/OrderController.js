@@ -2,12 +2,13 @@ const Orders = require('../Models/OrderModel');
 
 const createOrder = async (req, res) => {
     try {
-        const { Orderid, number, totalAmount, restrauntName, orderedItems, ItemPrices } = req.body;
+        const { Orderid, number, totalAmount, restrauntName, restrauntId, orderedItems, ItemPrices } = req.body;
         const order = await Orders.create({ 
             Orderid, 
             number, 
             totalAmount, 
             restrauntName, 
+            restrauntId,
             orderedItems, 
             ItemPrices 
         });
@@ -52,8 +53,21 @@ const getOrderById = async (req, res) => {
     }
 };
 
+const getOrdersByRestaurant = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const orders = await Orders.findAll({
+            where: { restrauntId: id }
+        });
+        res.status(200).json(orders);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 module.exports = {
     createOrder,
     getAllOrders,
     getOrderById,
+    getOrdersByRestaurant,
 };

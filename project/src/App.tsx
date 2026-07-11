@@ -16,6 +16,9 @@ import ProtectRoutes from './ProtectRoutes';
 import UserData from './Admin/UserData';
 import OrderDetails from './pages/OrderDetails';
 import AddFood from './Admin/AddFood';
+import VendorLayout from './Vendor/VendorLayout';
+import VendorMenu from './Vendor/VendorMenu';
+import VendorOrders from './Vendor/VendorOrders';
 
 export default function App() {
   return (
@@ -48,6 +51,16 @@ export default function App() {
               <Route path="*" element={<NotFound />} />
             </Route>
             
+            <Route path="/vendor" element={
+              <ProtectRoutes>
+                <VendorLayout />
+              </ProtectRoutes>
+            }>
+              <Route path="dashboard" element={<h1 className="text-3xl font-bold dark:text-white">Dashboard Overview</h1>} />
+              <Route path="menu" element={<VendorMenu />} />
+              <Route path="orders" element={<VendorOrders />} />
+            </Route>
+
             <Route path="/admin" element={<UserData />} />
             <Route path="/admin/addFood" element={<AddFood />} /> 
           </Routes>

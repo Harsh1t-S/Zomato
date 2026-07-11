@@ -1,6 +1,6 @@
 const User = require('../Models/UserModel');
 
-CreateUser = async (req, res) => {
+const CreateUser = async (req, res) => {
     try {
         const existingUser = await User.findOne({ where: { number: req.body.number } });
         if (existingUser) {
@@ -10,13 +10,13 @@ CreateUser = async (req, res) => {
             const { name, number, password } = req.body;
             const user = await User.create({ name, number, password });
             res.status(201).json(user);
-        }}
-     catch (error) {
+        }
+    } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-UpdateUser = async (req, res) => {
+const UpdateUser = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, number, password } = req.body;
@@ -31,7 +31,7 @@ UpdateUser = async (req, res) => {
     }
 };
 
-DeleteUser = async (req, res) => {
+const DeleteUser = async (req, res) => {
     try {
         const { id } = req.params;
         const user = await User.findByPk(id);
@@ -45,7 +45,7 @@ DeleteUser = async (req, res) => {
     }
 };
 
-GetUserById = async (req, res) => {
+const GetUserById = async (req, res) => {
     try {
         const { id } = req.params;
         const user = await User.findByPk(id);
@@ -55,10 +55,10 @@ GetUserById = async (req, res) => {
         res.json(user);
     } catch (error) {
         res.status(500).json({ error: error.message });
-}}
+    }
+};
 
-
-LoginUser = async (req, res) => {
+const LoginUser = async (req, res) => {
     try {
         const { number, password } = req.body;
         const user = await User.findOne({ where: { number } });
@@ -77,8 +77,7 @@ LoginUser = async (req, res) => {
     }
 };
 
-
-GetAllUsers = async (req, res) => {
+const GetAllUsers = async (req, res) => {
     try {
         const users = await User.findAll();
         res.json(users);
