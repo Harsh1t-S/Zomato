@@ -4,32 +4,27 @@ const RegisterVendor = async (req, res) => {
     try {
         const { ownerName, number, password, businessName, gstNumber } = req.body;
 
-        // 1. Strict Validation Repercussions: Catch empty fields before hitting the database
-        if (!ownerName || !number || !password || !businessName || !gstNumber) {
-            return res.status(400).json({ error: 'All fields, including GST and Business Name, are strictly required.' });
+        if (!ownerName || !number || !password || !businessName) {
+            return res.status(400).json({ error: 'Owner name, business name, phone number, and password are required.' });
         }
 
-        // 2. Format validation (Example: phone number length check)
         if (number.length < 10) {
             return res.status(400).json({ error: 'Please enter a valid phone number.' });
         }
 
-        // 3. Collision Check: Prevent duplicate accounts
         const existingVendor = await Vendor.findOne({ where: { number: number } });
         if (existingVendor) {
             return res.status(400).json({ error: 'A business account with this phone number already exists.' });
         }
         
-        // 4. Create the vendor
         const vendor = await Vendor.create({ 
             ownerName, 
             number, 
-            password, // NOTE: See Future Security Warning below
+            password, 
             businessName, 
-            gstNumber 
+            gstNumber: gstNumber || null 
         });
         
-        // Return without password for security
         const vendorResponse = vendor.toJSON();
         delete vendorResponse.password;
 
@@ -53,14 +48,6 @@ const LoginVendor = async (req, res) => {
             return res.status(404).json({ error: 'No business account found with this number.' });
         }
         
-        // Future Problem Addressed: Admin Approval Check
-        // If you want to require Zomato Admins to manually verify the GST number before they can login:
-        /*
-        if (vendor.isApproved === false) {
-            return res.status(403).json({ error: 'Your account is pending review by our team. We will contact you soon.' });
-        }
-        */
-
         const isMatch = (vendor.password === password); 
         
         if (!isMatch) {

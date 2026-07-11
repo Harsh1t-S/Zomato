@@ -4,21 +4,17 @@ import { Store, User, Building2, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function Signup() {
-  // Shared State
   const [number, setNumber] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isVendor, setIsVendor] = useState(false);
   
-  // Customer State
   const [name, setName] = useState('');
 
-  // Vendor State
   const [ownerName, setOwnerName] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [gstNumber, setGstNumber] = useState('');
 
-  // UI State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -32,7 +28,7 @@ export default function Signup() {
 
     try {
       const endpoint = isVendor 
-        ? 'https://zomato-production-1f03.up.railway.app/api/vendors/register' // Or http://localhost:8000 for local dev
+        ? 'https://zomato-production-1f03.up.railway.app/api/vendors/register'
         : 'https://zomato-production-1f03.up.railway.app/api/users';
 
       const payload = isVendor 
@@ -51,10 +47,8 @@ export default function Signup() {
         throw new Error(data.error || 'Failed to register account');
       }
 
-      // Automatically log them in after successful registration
       login(isVendor ? { ...data, role: 'vendor' } : data);
       
-      // Route them based on their account type
       if (isVendor) {
         navigate('/vendor/dashboard');
       } else {
@@ -80,7 +74,6 @@ export default function Signup() {
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
           
-          {/* Account Type Toggle */}
           <div className="flex p-1 bg-gray-100 dark:bg-gray-700 rounded-xl mb-6">
             <button
               type="button"
@@ -109,7 +102,6 @@ export default function Signup() {
           )}
 
           <form onSubmit={handleSignup} className="space-y-5">
-            {/* Conditional Fields based on Account Type */}
             {!isVendor ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Full Name</label>
@@ -117,17 +109,9 @@ export default function Signup() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Owner Name</label>
-                    <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="John Doe" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
-                       <FileText className="w-4 h-4 text-gray-400" /> GST Number
-                    </label>
-                    <input type="text" value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="22AAAAA0000A1Z5" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Owner Name</label>
+                  <input type="text" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="John Doe" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
@@ -135,10 +119,15 @@ export default function Signup() {
                   </label>
                   <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g. Harshit's Pizza" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1">
+                     <FileText className="w-4 h-4 text-gray-400" /> GST Number <span className="text-gray-400 text-xs font-normal ml-1">(Optional)</span>
+                  </label>
+                  <input type="text" value={gstNumber} onChange={(e) => setGstNumber(e.target.value)} placeholder="22AAAAA0000A1Z5" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" />
+                </div>
               </>
             )}
 
-            {/* Shared Fields */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Phone Number</label>
               <input type="text" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="10-digit mobile number" className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red" required />
