@@ -119,7 +119,7 @@ export default function Login() {
                 inputMode={role === 'admin' ? 'text' : 'numeric'}
                 value={number}
                 onChange={(e) => setNumber(e.target.value)}
-                placeholder={role === 'admin' ? 'Enter admin username' : 'Enter your phone number'}
+                placeholder={role === 'admin' ? 'Admin username = admin' : 'Enter your phone number'}
                 className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red dark:focus:border-zomato-red focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900/30 transition placeholder-gray-400 dark:placeholder-gray-500"
                 required
               />
@@ -135,7 +135,7 @@ export default function Login() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="The password is 12345 for admin"
+                  placeholder="The password for admin is 12345"
                   className="w-full px-4 py-3 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl focus:outline-none focus:border-zomato-red dark:focus:border-zomato-red focus:ring-2 focus:ring-red-200 dark:focus:ring-red-900/30 transition placeholder-gray-400 dark:placeholder-gray-500"
                   required
                 />
